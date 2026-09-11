@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>GERMISEED Soil Telemetry Dashboard</title>
+  <title>GermiSeed Soil Telemetry Dashboard</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -63,8 +63,8 @@
         <div class="flex items-center gap-3">
           <div class="h-11 w-11 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-2xl">🌱</div>
           <div>
-            <h1 class="text-2xl md:text-3xl font-bold tracking-tight">GERMISEED Soil Telemetry</h1>
-            <p class="text-sm text-slate-400">ESP32-S3 RS485 soil probe • Google Sheets telemetry • UiTM</p>
+            <h1 class="text-2xl md:text-3xl font-bold tracking-tight">GermiSeed Soil Telemetry</h1>
+            <p class="text-sm text-slate-400">ESP32-S3 RS485 soil probe • Google Sheets telemetry • UiTM • Dr Syahira Binti Jos</p>
           </div>
         </div>
       </div>
@@ -290,7 +290,7 @@
     </section>
 
     <footer class="py-2 text-center text-xs text-slate-500">
-      AgroSense dashboard • Google Sheets CSV feed
+      GermiSeed dashboard • Google Sheets CSV feed
     </footer>
   </main>
 
@@ -844,9 +844,11 @@ function commonOptions(data) {
 }
 
 function xy(data, key) {
+  // Chart.js with parsing:false requires x values in the time scale's
+  // internal numeric format (Unix epoch milliseconds), not Date objects.
   return data
-    .filter(row => Number.isFinite(row[key]))
-    .map(row => ({ x: row.t, y: row[key] }));
+    .filter(row => Number.isFinite(row[key]) && row.t instanceof Date)
+    .map(row => ({ x: row.t.getTime(), y: row[key] }));
 }
 
 function renderCharts() {
@@ -1240,7 +1242,15 @@ function runAnalytics() {
 
 function renderAll() {
   updateKPIs();
-  renderCharts();
+
+  try {
+    renderCharts();
+  } catch (error) {
+    console.error("[GermiSeed] chart render error:", error);
+    document.getElementById("dataNotes").innerText =
+      "Chart render error: " + (error.message || error);
+  }
+
   runAnalytics();
 }
 
@@ -1295,6 +1305,15 @@ async function loadData() {
 
     renderAll();
 
+    console.info(
+      "[GermiSeed] rendered",
+      cleanData.length,
+      "clean rows; chart window:",
+      preparedData().length,
+      "points; latest:",
+      cleanData[cleanData.length - 1].t.toLocaleString()
+    );
+
     document.getElementById("lastUpdated").innerText =
       new Date().toLocaleTimeString();
 
@@ -1305,7 +1324,7 @@ async function loadData() {
     if (ageMs > 5 * 60 * 1000) {
       setStatus("Connected • latest sample is stale", false, false);
     } else {
-      setStatus("Live • Google Sheet connected", false, true);
+      setStatus("Live • charts updated from Google Sheet", false, true);
     }
 
   } catch (error) {
