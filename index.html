@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>GermiSeed Soil Telemetry Dashboard</title>
+  <title>GermiSeed Soil & Water Telemetry Dashboard</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 
   <style>
     body {
@@ -52,19 +53,58 @@
     }
     .metric-table th:first-child,
     .metric-table td:first-child { text-align: left; }
+    .mode-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1.1rem 1.3rem;
+      background: linear-gradient(105deg, #063b39, #153651 62%, #172554);
+      border: 2px solid #38bdf8;
+      border-radius: 1rem;
+      box-shadow: 0 8px 30px rgba(14,165,233,.16);
+    }
+    .mode-controls { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .mode-btn {
+      min-width: 9rem;
+      border: 1px solid #64748b;
+      border-radius: .7rem;
+      padding: .75rem 1.2rem;
+      color: #e2e8f0;
+      background: #0f172a;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .mode-btn:focus-visible { outline: 3px solid #fbbf24; outline-offset: 2px; }
+    #soilModeBtn[aria-pressed="true"] { background: #059669; color: white; border-color: #6ee7b7; }
+    #waterModeBtn[aria-pressed="true"] { background: #0284c7; color: white; border-color: #7dd3fc; }
   </style>
 </head>
 
 <body class="p-4 md:p-7">
   <main class="max-w-[1600px] mx-auto space-y-6">
 
+    <section id="sensingModePanel" class="mode-strip" aria-label="Soil and water mode switch">
+      <div>
+        <h2 class="text-xl font-bold">🌱 Soil / 💧 Aquarium Water</h2>
+        <p id="activeModeText" class="text-sm text-sky-100 mt-1">Showing soil readings. Switch sensing mode here.</p>
+        <p class="text-xs text-sky-200 mt-1">Soil + Water dashboard • mode controls</p>
+      </div>
+      <div class="mode-controls" role="group" aria-label="Sensing mode">
+        <button id="soilModeBtn" type="button" aria-pressed="true" class="mode-btn">🌱 Soil mode</button>
+        <button id="waterModeBtn" type="button" aria-pressed="false" class="mode-btn">💧 Water mode</button>
+      </div>
+    </section>
+
     <header class="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-5 border-b border-slate-700">
       <div>
         <div class="flex items-center gap-3">
-          <div class="h-11 w-11 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-2xl">🌱</div>
+          <div id="modeIcon" class="h-11 w-11 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-2xl">🌱</div>
           <div>
-            <h1 class="text-2xl md:text-3xl font-bold tracking-tight">GermiSeed Soil Telemetry</h1>
-            <p class="text-sm text-slate-400">ESP32-S3 RS485 soil probe • Google Sheets telemetry • UiTM • Dr Syahira Binti Jos</p>
+            <h1 id="dashboardTitle" class="text-2xl md:text-3xl font-bold tracking-tight">GermiSeed Soil Telemetry</h1>
+            <p id="dashboardSubtitle" class="text-sm text-slate-400">ESP32-S3 RS485 soil probe • Google Sheets telemetry • UiTM • Dr Syahira Binti Jos</p>
           </div>
         </div>
       </div>
@@ -116,6 +156,11 @@
       </div>
     </header>
 
+    <section id="waterNotice" class="panel p-4 border-sky-700/50 text-sm text-sky-100" style="display:none" aria-live="polite">
+      <strong>Aquarium water view:</strong> Reported pH, temperature, EC and salinity are shown as trends; soil moisture and NPK do not measure aquarium water quality. Verify this probe is rated for immersion and calibrated for water before interpreting readings. It does not measure ammonia, nitrite or dissolved oxygen.
+      <span id="mediumTagNotice" class="block mt-1 text-sky-200"></span>
+    </section>
+
     <!-- Connection / sample metadata -->
     <section class="grid grid-cols-1 md:grid-cols-4 gap-4">
       <div class="panel p-4">
@@ -141,10 +186,10 @@
       <div class="panel p-4 kpi">
         <p class="text-xs text-slate-400 font-medium">pH</p>
         <p id="kpiPh" class="text-3xl font-bold text-emerald-400 mt-2">--</p>
-        <p class="text-xs text-slate-500 mt-2">Calibrated probe value</p>
+        <p id="phKpiHint" class="text-xs text-slate-500 mt-2">Calibrated probe value</p>
       </div>
 
-      <div class="panel p-4 kpi">
+      <div class="panel p-4 kpi" data-soil-only>
         <p class="text-xs text-slate-400 font-medium">Soil Moisture</p>
         <p id="kpiMoist" class="text-3xl font-bold text-sky-400 mt-2">--</p>
         <p class="text-xs text-slate-500 mt-2">%</p>
@@ -168,19 +213,19 @@
         <p class="text-xs text-slate-500 mt-2">probe units</p>
       </div>
 
-      <div class="panel p-4 kpi">
+      <div class="panel p-4 kpi" data-soil-only>
         <p class="text-xs text-slate-400 font-medium">Nitrogen (N)</p>
         <p id="kpiN" class="text-3xl font-bold text-lime-400 mt-2">--</p>
         <p class="text-xs text-slate-500 mt-2">mg/kg</p>
       </div>
 
-      <div class="panel p-4 kpi">
+      <div class="panel p-4 kpi" data-soil-only>
         <p class="text-xs text-slate-400 font-medium">Phosphorus (P)</p>
         <p id="kpiP" class="text-3xl font-bold text-amber-400 mt-2">--</p>
         <p class="text-xs text-slate-500 mt-2">mg/kg</p>
       </div>
 
-      <div class="panel p-4 kpi">
+      <div class="panel p-4 kpi" data-soil-only>
         <p class="text-xs text-slate-400 font-medium">Potassium (K)</p>
         <p id="kpiK" class="text-3xl font-bold text-orange-400 mt-2">--</p>
         <p class="text-xs text-slate-500 mt-2">mg/kg</p>
@@ -193,7 +238,7 @@
       </div>
 
       <div class="panel p-4 kpi">
-        <p class="text-xs text-slate-400 font-medium">Data Quality</p>
+        <p id="qualityCardLabel" class="text-xs text-slate-400 font-medium">Data Quality</p>
         <p id="kpiQuality" class="text-2xl font-bold text-slate-200 mt-2">--</p>
         <p id="kpiQualityHint" class="text-xs text-slate-500 mt-2">Waiting for samples</p>
       </div>
@@ -203,8 +248,8 @@
     <section class="grid grid-cols-1 xl:grid-cols-2 gap-6">
       <div class="panel p-5">
         <div class="mb-4">
-          <h2 class="font-semibold text-slate-100">pH & Soil Moisture</h2>
-          <p class="text-xs text-slate-500">Acidity/alkalinity and volumetric moisture trend</p>
+          <h2 id="phChartTitle" class="font-semibold text-slate-100">pH & Soil Moisture</h2>
+          <p id="phChartSubtitle" class="text-xs text-slate-500">Acidity/alkalinity and volumetric moisture trend</p>
         </div>
         <div class="relative h-80"><canvas id="chartPhMoist"></canvas></div>
       </div>
@@ -212,12 +257,12 @@
       <div class="panel p-5">
         <div class="mb-4">
           <h2 class="font-semibold text-slate-100">Temperature & EC</h2>
-          <p class="text-xs text-slate-500">Root-zone temperature and electrical conductivity</p>
+          <p id="tempChartSubtitle" class="text-xs text-slate-500">Root-zone temperature and electrical conductivity</p>
         </div>
         <div class="relative h-80"><canvas id="chartTempEc"></canvas></div>
       </div>
 
-      <div class="panel p-5">
+      <div class="panel p-5" data-soil-only>
         <div class="mb-4">
           <h2 class="font-semibold text-slate-100">NPK Nutrient Trend</h2>
           <p class="text-xs text-slate-500">Nitrogen, phosphorus and potassium</p>
@@ -228,7 +273,7 @@
       <div class="panel p-5">
         <div class="mb-4">
           <h2 class="font-semibold text-slate-100">Salinity</h2>
-          <p class="text-xs text-slate-500">Soil salinity trend reported by the RS485 probe</p>
+          <p id="salinityChartSubtitle" class="text-xs text-slate-500">Soil salinity trend reported by the RS485 probe</p>
         </div>
         <div class="relative h-80"><canvas id="chartSalinity"></canvas></div>
       </div>
@@ -240,6 +285,37 @@
         </div>
         <div class="relative h-64"><canvas id="chartVsys"></canvas></div>
       </div>
+    </section>
+
+    <!-- Browser-side machine learning -->
+    <section class="panel p-5" aria-labelledby="aiHeading">
+      <div class="flex flex-col md:flex-row md:items-start justify-between gap-3">
+        <div>
+          <h2 id="aiHeading" class="text-lg font-semibold">TensorFlow.js AI Analytics</h2>
+          <p class="text-sm text-slate-400">Models train on this browser's selected Google Sheet history. No AI API key or paid inference.</p>
+        </div>
+        <span id="aiStatus" role="status" aria-live="polite" class="text-xs text-amber-300">Waiting for data</span>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+        <div class="bg-slate-950/35 rounded-xl border border-slate-700 p-4">
+          <p class="text-xs uppercase text-slate-400">Latest pattern</p>
+          <p id="aiPattern" class="text-xl font-semibold mt-2">--</p>
+          <p id="aiPatternDetail" class="text-xs text-slate-400 mt-2">Awaiting enough complete samples.</p>
+        </div>
+        <div class="bg-slate-950/35 rounded-xl border border-slate-700 p-4">
+          <p class="text-xs uppercase text-slate-400">Next-sample forecast</p>
+          <div id="aiForecast" class="text-sm text-slate-200 mt-2">Awaiting enough regularly spaced samples.</div>
+        </div>
+        <div class="bg-slate-950/35 rounded-xl border border-slate-700 p-4">
+          <p class="text-xs uppercase text-slate-400">Sensor relationships</p>
+          <p id="aiCorrelation" class="text-sm text-slate-200 mt-2">Awaiting data.</p>
+        </div>
+      </div>
+      <div class="bg-emerald-950/25 rounded-xl border border-emerald-900/50 p-4 mt-4">
+        <h3 class="text-sm font-semibold">Automatic insight</h3>
+        <p id="aiInsight" class="text-sm text-slate-300 mt-2">Waiting for Google Sheet data.</p>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">Anomaly score is reconstruction error relative to a held-out baseline threshold, not a failure probability. Forecasts are experimental and show held-out mean absolute error; correlations do not imply causation. These estimates do not determine plant or fish health.</p>
     </section>
 
     <!-- Analytics -->
@@ -290,7 +366,7 @@
     </section>
 
     <footer class="py-2 text-center text-xs text-slate-500">
-      GermiSeed dashboard • Google Sheets CSV feed
+      GermiSeed soil & water dashboard • Google Sheets CSV feed
     </footer>
   </main>
 
@@ -307,6 +383,9 @@
    Expected Google Sheet headers:
    timestamp, vsys, temp, moist, ec, salinity,
    nitrogen, phosphorus, potassium, ph
+
+   Optional: add a "medium" column containing soil or water in each row.
+   This prevents past soil readings being analyzed as aquarium readings.
 */
 
 const CONFIG = {
@@ -342,6 +421,90 @@ const METRICS = [
   { key: "potassium",  label: "Potassium",       decimals: 1 },
   { key: "vsys",       label: "Vsys (V)",        decimals: 2 }
 ];
+
+const WATER_KEYS = new Set(["ph", "temp", "ec", "salinity", "vsys"]);
+let sensingMode = "soil";
+
+function activeMetrics() {
+  return sensingMode === "water"
+    ? METRICS.filter(metric => WATER_KEYS.has(metric.key))
+    : METRICS;
+}
+
+function aiMetrics() {
+  // Supply voltage describes the electronics, not the aquarium water.
+  return sensingMode === "water"
+    ? activeMetrics().filter(metric => metric.key !== "vsys")
+    : activeMetrics();
+}
+
+function normalizeMedium(value) {
+  const medium = String(value ?? "").trim().toLowerCase();
+  return medium === "soil" || medium === "water" ? medium : null;
+}
+
+function dataForMode() {
+  // Older Sheets without medium tags remain usable, with a visible caveat.
+  return cleanData.some(row => row.medium)
+    ? cleanData.filter(row => row.medium === sensingMode)
+    : cleanData;
+}
+
+function setSensingMode(mode, rerender = true) {
+  sensingMode = mode === "water" ? "water" : "soil";
+  const water = sensingMode === "water";
+  document.getElementById("soilModeBtn").setAttribute("aria-pressed", String(!water));
+  document.getElementById("waterModeBtn").setAttribute("aria-pressed", String(water));
+  document.getElementById("activeModeText").textContent = water
+    ? "Showing aquarium water readings. Switch back to Soil mode here."
+    : "Showing soil readings. Switch to Water mode here.";
+  document.getElementById("dashboardTitle").textContent = water
+    ? "GermiSeed Aquarium Water Trends" : "GermiSeed Soil Telemetry";
+  document.getElementById("dashboardSubtitle").textContent = water
+    ? "ESP32-S3 RS485 probe • reported water trends • Google Sheets • UiTM • Dr Syahira Binti Jos"
+    : "ESP32-S3 RS485 soil probe • Google Sheets telemetry • UiTM • Dr Syahira Binti Jos";
+  document.getElementById("modeIcon").textContent = water ? "💧" : "🌱";
+  document.getElementById("waterNotice").style.display = water ? "" : "none";
+  document.querySelectorAll("[data-soil-only]").forEach(el => {
+    el.style.display = water ? "none" : "";
+  });
+  document.getElementById("phChartTitle").textContent = water ? "Reported pH" : "pH & Soil Moisture";
+  document.getElementById("phChartSubtitle").textContent = water
+    ? "Reported acidity/alkalinity trend; verify water calibration"
+    : "Acidity/alkalinity and volumetric moisture trend";
+  document.getElementById("tempChartSubtitle").textContent = water
+    ? "Reported water temperature and electrical conductivity trends"
+    : "Root-zone temperature and electrical conductivity";
+  document.getElementById("salinityChartSubtitle").textContent = water
+    ? "Reported probe salinity; units and calibration must be verified"
+    : "Soil salinity trend reported by the RS485 probe";
+  document.getElementById("phKpiHint").textContent = water
+    ? "Reported pH • verify calibration in water"
+    : "Calibrated probe value";
+  document.getElementById("qualityCardLabel").textContent = water
+    ? "Reading Completeness" : "Data Quality";
+  document.getElementById("mediumTagNotice").textContent = cleanData.some(row => row.medium)
+    ? "Only rows tagged 'water' in the optional medium column appear here."
+    : "This Sheet has no medium tags: both modes currently show the same history. Add a 'medium' column with soil/water values to separate them.";
+  try { localStorage.setItem("germiseed-sensing-mode", sensingMode); } catch (_) { /* storage may be blocked */ }
+  if (rerender) {
+    renderAll();
+    if (cleanData.length) updateModeStatus();
+  }
+}
+
+function updateModeStatus() {
+  const rows = dataForMode();
+  if (!rows.length) {
+    setStatus(`No ${sensingMode} readings tagged in Google Sheet`, false, false);
+    return;
+  }
+  const ageMs = Date.now() - rows[rows.length - 1].t.getTime();
+  setStatus(ageMs > 5 * 60 * 1000
+    ? `Connected • latest ${sensingMode} sample is stale`
+    : `Live • ${sensingMode} charts updated from Google Sheet`, false,
+    ageMs <= 5 * 60 * 1000);
+}
 
 /*
   These are sanity limits for rejecting obviously corrupt individual values.
@@ -382,7 +545,12 @@ timeRangeSelect.addEventListener("change", renderAll);
 resolutionSelect.addEventListener("change", renderAll);
 refreshBtn.addEventListener("click", loadData);
 refreshIntervalInput.addEventListener("change", resetTimer);
-document.getElementById("runAnalyticsBtn").addEventListener("click", runAnalytics);
+document.getElementById("soilModeBtn").addEventListener("click", () => setSensingMode("soil"));
+document.getElementById("waterModeBtn").addEventListener("click", () => setSensingMode("water"));
+document.getElementById("runAnalyticsBtn").addEventListener("click", () => {
+  runAnalytics();
+  scheduleAiAnalytics(true);
+});
 
 
 /* ==========================================================================
@@ -577,6 +745,7 @@ function sanitizeRows(rows) {
     return {
       raw: row,
       t,
+      medium: normalizeMedium(row.medium ?? row.mode),
       vsys:       validateValue("vsys",       safeNum(row[c.vsys])),
       temp:       validateValue("temp",       safeNum(row[c.temp])),
       moist:      validateValue("moist",      safeNum(row[c.moist])),
@@ -679,7 +848,7 @@ function resample(data, resolutionSec) {
 }
 
 function preparedData() {
-  const ranged = dataInSelectedRange(cleanData);
+  const ranged = dataInSelectedRange(dataForMode());
   return resample(ranged, getSelectedResolution());
 }
 
@@ -695,7 +864,8 @@ function formatted(value, decimals = 1, suffix = "") {
 }
 
 function updateKPIs() {
-  if (!cleanData.length) {
+  const modeData = dataForMode();
+  if (!modeData.length) {
     [
       "kpiPh", "kpiMoist", "kpiTemp", "kpiEc", "kpiSalinity",
       "kpiN", "kpiP", "kpiK", "kpiVsys"
@@ -703,13 +873,13 @@ function updateKPIs() {
 
     document.getElementById("latestTimestamp").innerText = "--";
     document.getElementById("sampleAge").innerText = "--";
-    document.getElementById("rowsLoaded").innerText = rawRowCount;
+    document.getElementById("rowsLoaded").innerText = `0 ${sensingMode} / ${cleanData.length} valid`;
     document.getElementById("kpiQuality").innerText = "--";
-    document.getElementById("kpiQualityHint").innerText = "No valid timestamp rows";
+    document.getElementById("kpiQualityHint").innerText = `No ${sensingMode} rows available`;
     return;
   }
 
-  const last = cleanData[cleanData.length - 1];
+  const last = modeData[modeData.length - 1];
 
   document.getElementById("kpiPh").innerText =
     formatted(last.ph, 2);
@@ -745,11 +915,12 @@ function updateKPIs() {
     humanAge(Date.now() - last.t.getTime());
 
   document.getElementById("rowsLoaded").innerText =
-    `${cleanData.length} valid / ${rawRowCount} raw`;
+    `${modeData.length} ${sensingMode} / ${cleanData.length} valid / ${rawRowCount} raw`;
 
-  const expectedFields = cleanData.length * METRICS.length;
-  const validFields = cleanData.reduce((total, row) => {
-    return total + METRICS.reduce(
+  const metrics = activeMetrics();
+  const expectedFields = modeData.length * metrics.length;
+  const validFields = modeData.reduce((total, row) => {
+    return total + metrics.reduce(
       (count, metric) => count + (Number.isFinite(row[metric.key]) ? 1 : 0),
       0
     );
@@ -763,7 +934,7 @@ function updateKPIs() {
     quality.toFixed(1) + "%";
 
   document.getElementById("kpiQualityHint").innerText =
-    `${invalidFieldCount} implausible field(s) rejected`;
+    `${metrics.length} visible metrics • ${invalidFieldCount} implausible field(s) rejected across feed`;
 }
 
 function humanAge(ms) {
@@ -872,15 +1043,17 @@ function renderCharts() {
       title: { display: true, text: "pH", color: "#94a3b8" }
     };
 
-    options.scales.yMoist = {
-      type: "linear",
-      position: "right",
-      suggestedMin: 0,
-      suggestedMax: 100,
-      ticks: { color: "#38bdf8" },
-      grid: { display: false },
-      title: { display: true, text: "Moisture (%)", color: "#94a3b8" }
-    };
+    if (sensingMode === "soil") {
+      options.scales.yMoist = {
+        type: "linear",
+        position: "right",
+        suggestedMin: 0,
+        suggestedMax: 100,
+        ticks: { color: "#38bdf8" },
+        grid: { display: false },
+        title: { display: true, text: "Moisture (%)", color: "#94a3b8" }
+      };
+    }
 
     charts.phMoist = new Chart(
       document.getElementById("chartPhMoist"),
@@ -899,7 +1072,7 @@ function renderCharts() {
               pointRadius: 0,
               borderWidth: 2
             },
-            {
+            ...(sensingMode === "soil" ? [{
               label: "Moisture (%)",
               data: xy(data, "moist"),
               parsing: false,
@@ -908,7 +1081,7 @@ function renderCharts() {
               tension: .22,
               pointRadius: 0,
               borderWidth: 2
-            }
+            }] : [])
           ]
         },
         options
@@ -970,8 +1143,8 @@ function renderCharts() {
     );
   }
 
-  // NPK
-  {
+  // NPK is a soil-only reading.
+  if (sensingMode === "soil") {
     const options = commonOptions(data);
 
     options.scales.y = {
@@ -1164,14 +1337,14 @@ function runAnalytics() {
   tbody.innerHTML = "";
 
   if (!data.length) {
-    anomaliesEl.innerText = "No data in the selected time range.";
-    notesEl.innerText = "Choose a wider time range or check the Google Sheet CSV configuration.";
+    anomaliesEl.innerText = `No ${sensingMode} data in the selected time range.`;
+    notesEl.innerText = "Choose a wider time range or check the optional medium column in the Google Sheet.";
     return;
   }
 
   const anomalyBlocks = [];
 
-  METRICS.forEach(metric => {
+  activeMetrics().forEach(metric => {
     const values = data
       .map(row => row[metric.key])
       .filter(Number.isFinite);
@@ -1220,7 +1393,7 @@ function runAnalytics() {
     : "No ≥3σ statistical outliers detected in the selected window.";
 
   const missingFields = data.reduce((count, row) => {
-    return count + METRICS.reduce(
+    return count + activeMetrics().reduce(
       (n, metric) => n + (Number.isFinite(row[metric.key]) ? 0 : 1),
       0
     );
@@ -1230,9 +1403,314 @@ function runAnalytics() {
     <div>${data.length} plotted/resampled point(s) in the selected window.</div>
     <div class="mt-1">${missingFields} missing/invalid metric value(s) in this rendered dataset.</div>
     <div class="mt-1 text-slate-400">
-      Statistical outliers indicate unusual readings, not necessarily agronomic faults.
+      Statistical outliers indicate unusual readings, not necessarily ${sensingMode === "water" ? "water-quality problems" : "agronomic faults"}.
     </div>
   `;
+}
+
+/* ==========================================================================
+   TENSORFLOW.JS: LEARNED ANOMALIES + ONE-STEP FORECASTS
+   Models are small, trained on the selected/resampled window, and disposed
+   after each calculation. Data and predictions stay in the browser.
+   ========================================================================== */
+
+const AI = { maxRows: 300, minAnomalyRows: 55 };
+function forecastKeys() {
+  return sensingMode === "water" ? ["ph", "temp", "ec"] : ["ph", "moist", "temp", "ec"];
+}
+let aiRunning = false;
+let aiPending = null;
+let aiLastFingerprint = "";
+let aiGeneration = 0;
+
+function quantile(values, fraction) {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return NaN;
+  const at = (sorted.length - 1) * fraction;
+  const low = Math.floor(at);
+  return sorted[low] + (sorted[Math.ceil(at)] - sorted[low]) * (at - low);
+}
+
+function setAiStatus(message, css = "text-slate-400") {
+  const el = document.getElementById("aiStatus");
+  el.className = `text-xs ${css}`;
+  el.textContent = message;
+}
+
+function resetAiPanel(reason) {
+  document.getElementById("aiPattern").textContent = "--";
+  document.getElementById("aiPatternDetail").textContent = reason;
+  document.getElementById("aiForecast").textContent = reason;
+  document.getElementById("aiCorrelation").textContent = "Not enough valid paired readings.";
+  document.getElementById("aiInsight").textContent = reason;
+}
+
+function scheduleAiAnalytics(force = false) {
+  const data = preparedData().slice(-AI.maxRows);
+  // Include actual metric values so edits to an existing Sheet row retrain.
+  const fingerprint = sensingMode + JSON.stringify(data.map(row => [row.t.getTime(),
+    ...activeMetrics().map(metric => Number.isFinite(row[metric.key]) ? row[metric.key] : null)]));
+  if (!force && fingerprint === aiLastFingerprint) return;
+  aiLastFingerprint = fingerprint;
+  resetAiPanel(`Preparing ${sensingMode} analysis for the selected readings…`);
+  aiPending = { data, generation: ++aiGeneration };
+  if (!aiRunning) void processAiQueue();
+}
+
+async function processAiQueue() {
+  aiRunning = true;
+  try {
+    while (aiPending) {
+      const { data, generation } = aiPending;
+      aiPending = null;
+      if (!data.length) {
+        if (generation === aiGeneration) {
+          resetAiPanel(`No ${sensingMode} readings in the selected time range.`);
+          setAiStatus("Waiting for samples", "text-amber-300");
+        }
+        continue;
+      }
+      if (typeof tf === "undefined") {
+        if (generation === aiGeneration) {
+          resetAiPanel("TensorFlow.js did not load. Check access to cdn.jsdelivr.net and refresh.");
+          setAiStatus("Model unavailable", "text-rose-300");
+        }
+        continue;
+      }
+      setAiStatus("Training locally…", "text-sky-300");
+      try {
+        await tf.ready();
+        const anomaly = await detectLearnedAnomaly(data);
+        // Skip expensive second training pass when a newer refresh is queued.
+        const forecast = generation === aiGeneration
+          ? await forecastNextSample(data) : null;
+        if (generation === aiGeneration) {
+          showAiResults(data, anomaly, forecast, strongestCorrelation(data));
+          setAiStatus("Analyzed locally • " + data.length + " points", "text-emerald-300");
+        }
+      } catch (error) {
+        console.error("[GermiSeed] TensorFlow.js analytics error:", error);
+        if (generation === aiGeneration) {
+          resetAiPanel("Model calculation failed: " + (error.message || error));
+          setAiStatus("Model error", "text-rose-300");
+        }
+      }
+    }
+  } finally {
+    aiRunning = false;
+  }
+}
+
+async function detectLearnedAnomaly(data) {
+  const recent = data.slice(-AI.maxRows);
+  // Only include consistently present, nonconstant metrics. No imputation.
+  const keys = aiMetrics().map(m => m.key).filter(key => {
+    const valid = recent.map(row => row[key]).filter(Number.isFinite);
+    const { std } = meanStd(valid);
+    return valid.length >= recent.length * .9 && std > 1e-6;
+  });
+  if (keys.length < 3) return { note: "Need at least three varying, mostly complete sensors." };
+  const rows = recent.filter(row => keys.every(key => Number.isFinite(row[key])));
+  if (rows.length < AI.minAnomalyRows) {
+    return { note: `Need ${AI.minAnomalyRows} complete readings (${rows.length} available).` };
+  }
+  if (rows[rows.length - 1].t.getTime() !== recent[recent.length - 1].t.getTime()) {
+    return { note: "Latest sample has missing sensor values; cannot score its pattern." };
+  }
+
+  const trainingEnd = Math.floor(rows.length * .7);
+  const calibrationEnd = Math.floor(rows.length * .85);
+  const centers = keys.map(key => meanStd(rows.slice(0, trainingEnd).map(row => row[key])));
+  if (centers.some(s => !Number.isFinite(s.std) || s.std < 1e-6)) {
+    return { note: "Historical sensor values are too constant to learn a baseline." };
+  }
+  const vectors = rows.map(row => keys.map((key, j) =>
+    Math.max(-8, Math.min(8, (row[key] - centers[j].mean) / centers[j].std))));
+  const width = keys.length;
+  const hidden = Math.min(10, Math.max(4, width + 1));
+  const model = tf.sequential();
+  model.add(tf.layers.dense({ inputShape: [width], units: hidden, activation: "relu" }));
+  model.add(tf.layers.dense({ units: Math.max(2, Math.floor(width / 2)), activation: "relu" }));
+  model.add(tf.layers.dense({ units: hidden, activation: "relu" }));
+  model.add(tf.layers.dense({ units: width }));
+  const optimizer = tf.train.adam(.008);
+  model.compile({ optimizer, loss: "meanSquaredError" });
+  let trainX, allX, prediction;
+  try {
+    trainX = tf.tensor2d(vectors.slice(0, trainingEnd));
+    allX = tf.tensor2d(vectors);
+    await model.fit(trainX, trainX, {
+      epochs: 35, batchSize: Math.min(32, trainingEnd), shuffle: true,
+      verbose: 0, yieldEvery: "epoch"
+    });
+    prediction = model.predict(allX);
+    const reconstructed = await prediction.array();
+    const errors = vectors.map((vector, i) => vector.reduce((sum, value, j) =>
+      sum + (value - reconstructed[i][j]) ** 2, 0) / width);
+    // Calibration is strictly later than training; latest samples are never
+    // used to set the threshold. This is a relative score, not a probability.
+    const threshold = Math.max(.01, quantile(errors.slice(trainingEnd, calibrationEnd), .95) * 1.25);
+    const latest = errors[errors.length - 1];
+    const recentAnomalies = errors.slice(calibrationEnd)
+      .map((score, i) => ({ score, t: rows[calibrationEnd + i].t }))
+      .filter(item => item.score > threshold);
+    return { keys, latest, threshold, recentAnomalies, rows: rows.length };
+  } finally {
+    prediction?.dispose();
+    allX?.dispose();
+    trainX?.dispose();
+    model.dispose();
+    optimizer.dispose();
+  }
+}
+
+async function forecastNextSample(data) {
+  const keys = forecastKeys();
+  const complete = data.slice(-AI.maxRows)
+    .filter(row => keys.every(key => Number.isFinite(row[key])));
+  if (complete.length < 60) return { note: `Need 60 complete ${keys.join(", ")} readings (${complete.length} available). Widen the time range if needed.` };
+  if (complete[complete.length - 1].t.getTime() !== data[data.length - 1].t.getTime()) {
+    return { note: "Latest sample has missing forecast sensor values." };
+  }
+  const gaps = complete.slice(-41).map((row, i, tail) =>
+    i ? row.t.getTime() - tail[i - 1].t.getTime() : NaN)
+    .filter(gap => gap > 0);
+  const gap = quantile(gaps, .5);
+  if (!Number.isFinite(gap) || gap <= 0) return { note: "Need regular timestamps for a next-sample forecast." };
+  const samples = [];
+  for (let i = 5; i < complete.length; i++) {
+    const window = complete.slice(i - 5, i + 1);
+    if (window.slice(1).some((row, j) => {
+      const delta = row.t.getTime() - window[j].t.getTime();
+      return delta < .5 * gap || delta > 2 * gap;
+    })) continue;
+    samples.push({ past: window.slice(0, 5), next: window[5] });
+  }
+  if (samples.length < 48 || samples[samples.length - 1]?.next !== complete[complete.length - 1]) {
+    return { note: "Need 48 consecutive, regularly spaced training windows ending at the latest sample." };
+  }
+  const split = Math.floor(samples.length * .8);
+  const baseline = samples.slice(0, split).flatMap(sample => sample.past);
+  const centers = keys.map(key => meanStd(baseline.map(row => row[key])));
+  if (centers.some(s => !Number.isFinite(s.std) || s.std < 1e-6)) {
+    return { note: "Forecast sensors have insufficient variation for model training." };
+  }
+  const normalize = (row, j) => Math.max(-8, Math.min(8,
+    (row[keys[j]] - centers[j].mean) / centers[j].std));
+  const xs = samples.map(sample => sample.past.flatMap(row => keys.map((_, j) => normalize(row, j))));
+  const ys = samples.map(sample => keys.map((_, j) => normalize(sample.next, j)));
+  const model = tf.sequential();
+  model.add(tf.layers.dense({ inputShape: [5 * keys.length], units: 12, activation: "relu" }));
+  model.add(tf.layers.dense({ units: keys.length }));
+  const optimizer = tf.train.adam(.006);
+  model.compile({ optimizer, loss: "meanSquaredError" });
+  let trainX, trainY, evalX, evalPrediction, nextX, nextPrediction;
+  try {
+    trainX = tf.tensor2d(xs.slice(0, split));
+    trainY = tf.tensor2d(ys.slice(0, split));
+    await model.fit(trainX, trainY, {
+      epochs: 40, batchSize: Math.min(32, split), shuffle: false,
+      verbose: 0, yieldEvery: "epoch"
+    });
+    evalX = tf.tensor2d(xs.slice(split));
+    evalPrediction = model.predict(evalX);
+    const evalValues = await evalPrediction.array();
+    const mae = keys.map((key, j) => evalValues.reduce((sum, row, i) =>
+      sum + Math.abs((row[j] - ys[split + i][j]) * centers[j].std), 0) / evalValues.length);
+    const naiveMae = keys.map((key, j) => samples.slice(split).reduce((sum, sample) =>
+      sum + Math.abs(sample.next[key] - sample.past[4][key]), 0) / evalValues.length);
+    const lastFive = complete.slice(-5);
+    if (lastFive.slice(1).some((row, i) => {
+      const delta = row.t.getTime() - lastFive[i].t.getTime();
+      return delta < .5 * gap || delta > 2 * gap;
+    })) return { note: "Latest samples are not regularly spaced." };
+    nextX = tf.tensor2d([lastFive.flatMap(row => keys.map((_, j) => normalize(row, j)))]);
+    nextPrediction = model.predict(nextX);
+    const predicted = (await nextPrediction.array())[0];
+    const results = keys.map((key, j) => ({
+      key, value: predicted[j] * centers[j].std + centers[j].mean,
+      mae: mae[j], reliable: Number.isFinite(mae[j]) && mae[j] <= naiveMae[j]
+    })).filter(item => item.reliable && Number.isFinite(item.value) &&
+      item.value >= PLAUSIBLE[item.key][0] && item.value <= PLAUSIBLE[item.key][1]);
+    return { results, gap, evaluated: evalValues.length,
+      note: results.length ? "" : "Model did not beat a recent-value baseline on held-out data; forecast withheld." };
+  } finally {
+    nextPrediction?.dispose();
+    nextX?.dispose();
+    evalPrediction?.dispose();
+    evalX?.dispose();
+    trainY?.dispose();
+    trainX?.dispose();
+    model.dispose();
+    optimizer.dispose();
+  }
+}
+
+function strongestCorrelation(data) {
+  let strongest = null;
+  const metrics = aiMetrics();
+  for (let i = 0; i < metrics.length; i++) {
+    for (let j = i + 1; j < metrics.length; j++) {
+      const a = metrics[i], b = metrics[j];
+      const pairs = data.filter(row => Number.isFinite(row[a.key]) && Number.isFinite(row[b.key]));
+      if (pairs.length < 20) continue;
+      const as = meanStd(pairs.map(row => row[a.key]));
+      const bs = meanStd(pairs.map(row => row[b.key]));
+      if (as.std < 1e-6 || bs.std < 1e-6) continue;
+      const r = pairs.reduce((sum, row) => sum +
+        (row[a.key] - as.mean) * (row[b.key] - bs.mean), 0) /
+        (pairs.length * as.std * bs.std);
+      if (!strongest || Math.abs(r) > Math.abs(strongest.r)) strongest = { a, b, r, n: pairs.length };
+    }
+  }
+  return strongest;
+}
+
+function showAiResults(data, anomaly, forecast, correlation) {
+  const pattern = document.getElementById("aiPattern");
+  const detail = document.getElementById("aiPatternDetail");
+  const forecastEl = document.getElementById("aiForecast");
+  const insights = [];
+  if (anomaly.note) {
+    pattern.textContent = "Insufficient data";
+    pattern.className = "text-xl font-semibold mt-2 text-amber-300";
+    detail.textContent = anomaly.note;
+    insights.push(anomaly.note);
+  } else {
+    const unusual = anomaly.latest > anomaly.threshold;
+    pattern.textContent = unusual ? "Unusual pattern" : "Within learned pattern";
+    pattern.className = "text-xl font-semibold mt-2 " + (unusual ? "text-rose-300" : "text-emerald-300");
+    detail.textContent = `Error ${anomaly.latest.toFixed(3)} / threshold ${anomaly.threshold.toFixed(3)} • ${anomaly.keys.length} sensors • ${anomaly.rows} complete rows`;
+    insights.push(unusual
+      ? `Latest combined sensor pattern exceeds the learned baseline; ${anomaly.recentAnomalies.length} later sample(s) exceeded it. Check the raw readings and probe.`
+      : `Latest combined sensor pattern remains within the learned baseline (${anomaly.recentAnomalies.length} later exceedance(s)).`);
+  }
+  const stale = Date.now() - data[data.length - 1].t.getTime() > 5 * 60 * 1000;
+  if (stale) {
+    forecastEl.textContent = "Latest reading is over 5 minutes old; live forecast withheld.";
+  } else if (!forecast?.results?.length) {
+    forecastEl.textContent = forecast?.note || "Forecast unavailable.";
+  } else {
+    forecastEl.replaceChildren();
+    const heading = document.createElement("p");
+    heading.className = "text-xs text-slate-400 mb-2";
+    heading.textContent = `Approximately ${humanAge(forecast.gap)} after last sample • ${forecast.evaluated} held-out windows`;
+    forecastEl.appendChild(heading);
+    forecast.results.forEach(item => {
+      const metric = METRICS.find(m => m.key === item.key);
+      const row = document.createElement("p");
+      row.className = "mt-1";
+      row.textContent = `${metric.label}: ${formatted(item.value, metric.decimals)} (held-out MAE ${formatted(item.mae, metric.decimals)})`;
+      forecastEl.appendChild(row);
+    });
+    const strongest = forecast.results.reduce((best, item) =>
+      !best || item.mae < best.mae ? item : best, null);
+    insights.push(`Next ${humanAge(forecast.gap)} ${METRICS.find(m => m.key === strongest.key).label} estimate: ${formatted(strongest.value, METRICS.find(m => m.key === strongest.key).decimals)} (held-out MAE ${formatted(strongest.mae, METRICS.find(m => m.key === strongest.key).decimals)}).`);
+  }
+  document.getElementById("aiCorrelation").textContent = correlation
+    ? `${correlation.a.label} and ${correlation.b.label}: r = ${correlation.r.toFixed(2)} (${correlation.n} paired points). ${Math.abs(correlation.r) >= .65 ? "Strong observed association." : "No strong pair found."}`
+    : "Need at least 20 varying, paired readings.";
+  document.getElementById("aiInsight").textContent = insights.join(" ");
 }
 
 
@@ -1252,6 +1730,7 @@ function renderAll() {
   }
 
   runAnalytics();
+  scheduleAiAnalytics();
 }
 
 function expectedHeadersMissing(rows) {
@@ -1303,6 +1782,7 @@ async function loadData() {
       );
     }
 
+    setSensingMode(sensingMode, false); // refresh tagging notice after each CSV fetch
     renderAll();
 
     console.info(
@@ -1317,15 +1797,7 @@ async function loadData() {
     document.getElementById("lastUpdated").innerText =
       new Date().toLocaleTimeString();
 
-    const latest = cleanData[cleanData.length - 1];
-    const ageMs = Date.now() - latest.t.getTime();
-
-    // Mark a stream stale if its newest record is older than 5 minutes.
-    if (ageMs > 5 * 60 * 1000) {
-      setStatus("Connected • latest sample is stale", false, false);
-    } else {
-      setStatus("Live • charts updated from Google Sheet", false, true);
-    }
+    updateModeStatus();
 
   } catch (error) {
     console.error(error);
@@ -1357,6 +1829,9 @@ function resetTimer() {
 }
 
 window.addEventListener("load", () => {
+  let savedMode = "soil";
+  try { savedMode = localStorage.getItem("germiseed-sensing-mode") || "soil"; } catch (_) { /* storage may be blocked */ }
+  setSensingMode(savedMode, false);
   loadData();
   resetTimer();
 });
