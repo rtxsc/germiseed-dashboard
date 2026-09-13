@@ -72,13 +72,6 @@
     .farmer-value { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-top: .7rem; }
     .farmer-badge { display: inline-block; border-radius: 1rem; padding: .22rem .65rem; margin-top: .65rem; font-size: .8rem; color: #bae6fd; background: #16405d; }
     .farmer-badge.check { color: #fde68a; background: #593e19; }
-    .farmer-card details { margin-top: .8rem; }
-    .farmer-card summary, .target-settings summary { cursor: pointer; color: #bae6fd; font-weight: 600; }
-    .farmer-badge.optimal { color: #a7f3d0; background: #064e3b; }
-    .target-settings { padding: 1rem; border: 1px solid #475569; border-radius: .8rem; }
-    .target-settings p { margin: .7rem 0; color: #cbd5e1; font-size: .9rem; }
-    .target-settings input { width: 7rem; padding: .4rem; margin: .3rem; color: white; background: #111e32; border: 1px solid #64748b; border-radius: .4rem; }
-    #saveTargets { margin-top: .8rem; padding: .6rem 1rem; background: #065f46; border-radius: .5rem; }
     .farmer-action { border-top: 1px solid #334155; padding-top: .6rem; }
     .mode-controls { display: flex; gap: .5rem; flex-wrap: wrap; }
     .mode-btn {
@@ -282,7 +275,6 @@
         <p id="farmerSummary" class="text-slate-200 text-sm mt-2" aria-live="polite">Waiting for the latest sensor reading.</p>
         <p id="farmerFreshness" class="text-slate-400 text-xs mt-2">Checking when this reading was taken.</p>
       </div>
-      <details class="target-settings mt-4"><summary id="targetHeading"></summary><p id="targetHelp"></p><p><a href="https://extension.umn.edu/about/our-stories/news/step-by-step-lawn-garden-soil-sampling-guide" target="_blank" rel="noopener noreferrer" class="underline text-sky-300">University of Minnesota Extension — soil pH reference</a></p><div id="targetFields" class="farmer-grid"></div><button id="saveTargets" type="button"></button><p id="targetFeedback" role="status"></p></details>
       <div id="farmerCards" class="farmer-grid mt-4"></div>
       <p id="farmerModeNote" class="text-sm text-slate-400 mt-4"></p>
       <p class="text-sm text-slate-400 mt-3">A reading staying steady does not prove that plants or fish are healthy. The guide compares readings with recent history; the best target depends on your crop or fish, soil type, and a properly checked probe.</p>
@@ -1968,96 +1960,7 @@ function textElement(tag, text, css = '') {
   return element;
 }
 
-
-Object.assign(MS_TEXT, {
-  "Optimal":"Optimum", "Too Acidic":"Terlalu Berasid", "Too Alkaline":"Terlalu Beralkali",
-  "Too Dry":"Terlalu Kering", "Too Wet":"Terlalu Basah", "Too Cold":"Terlalu Sejuk", "Too Hot":"Terlalu Panas",
-  "Low EC":"EC Rendah", "High EC":"EC Tinggi", "Low Salt":"Garam Rendah", "High Salt":"Garam Tinggi",
-  "Low Nitrogen":"Nitrogen Rendah", "High Nitrogen":"Nitrogen Tinggi", "Low Phosphorus":"Fosforus Rendah", "High Phosphorus":"Fosforus Tinggi",
-  "Low Potassium":"Kalium Rendah", "High Potassium":"Kalium Tinggi", "Low Voltage":"Voltan Rendah", "High Voltage":"Voltan Tinggi",
-  "Set target range":"Tetapkan julat sasaran", "What this means / What to do":"Maksud bacaan / Tindakan yang boleh diambil",
-  "Trend: {0}":"Trend: {0}", "Target range: {0}–{1}":"Julat sasaran: {0}–{1}",
-  "Target ranges — customise for your crop or fish":"Julat sasaran — sesuaikan untuk tanaman atau ikan anda",
-  "Minimum":"Minimum", "Maximum":"Maksimum", "Save target ranges":"Simpan julat sasaran",
-  "Targets saved for this sensing mode.":"Sasaran disimpan untuk mod penderiaan ini.",
-  "Enter both limits as numbers, with minimum no higher than maximum, or leave both blank.":"Masukkan kedua-dua had sebagai nombor, dengan minimum tidak melebihi maksimum, atau kosongkan kedua-duanya.",
-  "Optimal means within your chosen target, not proof that the soil or aquarium is healthy. Soil pH starts with an example range of 6–7; adjust it for your crop. Other ranges need crop, fish or equipment guidance. Blank limits show trends only. Soil and water targets are saved separately on this browser.":"Optimum bermaksud dalam julat sasaran pilihan anda, bukan bukti tanah atau akuarium sihat. pH tanah bermula dengan julat contoh 6–7; sesuaikan untuk tanaman anda. Julat lain memerlukan panduan tanaman, ikan atau peralatan. Had kosong hanya memaparkan trend. Sasaran tanah dan air disimpan berasingan dalam pelayar ini.",
-  "This reading is below your target range.":"Bacaan ini di bawah julat sasaran anda.", "This reading is above your target range.":"Bacaan ini melebihi julat sasaran anda.",
-  "This reading is within your target range.":"Bacaan ini dalam julat sasaran anda.",
-  "No target range is set. The trend describes change, not whether this level is suitable.":"Julat sasaran belum ditetapkan. Trend menerangkan perubahan, bukan kesesuaian tahap ini."
-});
-let farmerTargets = {soil:{ph:[6,7]},water:{}};
-try {
-  const saved = JSON.parse(localStorage.getItem('germiseed-target-ranges'));
-  if (saved && saved.soil && saved.water) {
-    for (const mode of ['soil','water']) {
-      farmerTargets[mode] = {};
-      for (const metric of METRICS) {
-        const range = saved[mode][metric.key];
-        if (Array.isArray(range) && range.length === 2 && range.every(Number.isFinite) && range[0] <= range[1]) farmerTargets[mode][metric.key] = range;
-      }
-    }
-  }
-} catch (_) {}
-let targetFormSignature = '';
-const farmerExpanded = new Set();
-function farmerStatus(state) {
-  if (state.missing) return {label:L("No current reading"),check:true};
-  const range = farmerTargets[sensingMode][state.key];
-  if (!range) return {label:L("Set target range"),check:false,message:L("No target range is set. The trend describes change, not whether this level is suitable.")};
-  const names = {ph:['Too Acidic','Too Alkaline'],moist:['Too Dry','Too Wet'],temp:['Too Cold','Too Hot'],ec:['Low EC','High EC'],salinity:['Low Salt','High Salt'],nitrogen:['Low Nitrogen','High Nitrogen'],phosphorus:['Low Phosphorus','High Phosphorus'],potassium:['Low Potassium','High Potassium'],vsys:['Low Voltage','High Voltage']};
-  const side = state.value < range[0] ? -1 : state.value > range[1] ? 1 : 0;
-  return {label:L(side ? names[state.key][side < 0 ? 0 : 1] : 'Optimal'),check:!!side,optimal:!side,
-    message:L(side < 0 ? "This reading is below your target range." : side > 0 ? "This reading is above your target range." : "This reading is within your target range."),range};
-}
-function renderTargetSettings() {
-  const signature = sensingMode + uiLanguage;
-  if (targetFormSignature === signature) return;
-  targetFormSignature = signature;
-  document.getElementById('targetHeading').textContent = L("Target ranges — customise for your crop or fish");
-  document.getElementById('targetHelp').textContent = L("Optimal means within your chosen target, not proof that the soil or aquarium is healthy. Soil pH starts with an example range of 6–7; adjust it for your crop. Other ranges need crop, fish or equipment guidance. Blank limits show trends only. Soil and water targets are saved separately on this browser.");
-  const fields = document.getElementById('targetFields'); fields.replaceChildren();
-  activeMetrics().forEach(metric => {
-    const row = textElement('div','');
-    const info = {...SIMPLE_PARAMETERS[metric.key],...(sensingMode === 'water' ? WATER_PARAMETERS[metric.key] : {})};
-    row.appendChild(textElement('p',info.title + (info.unit ? ' ('+info.unit+')' : '')));
-    ['Minimum','Maximum'].forEach((name,i) => {
-      const label = textElement('label',L(name)); const input = document.createElement('input');
-      input.type='number'; input.step='any'; input.id='target-'+metric.key+'-'+i;
-      input.value=farmerTargets[sensingMode][metric.key]?.[i] ?? '';
-      label.appendChild(input); row.appendChild(label);
-    }); fields.appendChild(row);
-  });
-  const button = document.getElementById('saveTargets'); button.textContent=L("Save target ranges");
-  document.getElementById('targetFeedback').textContent='';
-  button.onclick=() => {
-    const next={};
-    for (const metric of activeMetrics()) {
-      const limits=[0,1].map(i=>document.getElementById('target-'+metric.key+'-'+i).value.trim());
-      if (limits.every(x=>x==='')) continue;
-      const numbers=limits.map(Number);
-      if (limits.some(x=>x==='') || !numbers.every(Number.isFinite) || numbers[0]>numbers[1]) {
-        document.getElementById('targetFeedback').textContent=L("Enter both limits as numbers, with minimum no higher than maximum, or leave both blank."); return;
-      }
-      next[metric.key]=numbers;
-    }
-    farmerTargets[sensingMode]=next;
-    try {localStorage.setItem('germiseed-target-ranges',JSON.stringify(farmerTargets));} catch (_) {}
-    renderFarmerGuide();
-    document.getElementById('targetFeedback').textContent=L("Targets saved for this sensing mode.");
-  };
-}
-function farmerDetails(key) {
-  const details = document.createElement('details');
-  const identity=sensingMode+':'+key;
-  details.open=farmerExpanded.has(identity);
-  details.ontoggle=()=>{if(details.open) farmerExpanded.add(identity); else farmerExpanded.delete(identity);};
-  details.appendChild(textElement('summary',L("What this means / What to do")));
-  return details;
-}
-
 function renderFarmerGuide() {
-  renderTargetSettings();
   const water = sensingMode === 'water';
   document.getElementById('farmerHeading').textContent = water ? L("Your aquarium readings, explained simply") : L("Your soil, explained simply");
   const container = document.getElementById('farmerCards');
@@ -2073,11 +1976,8 @@ function renderFarmerGuide() {
       const info = { ...SIMPLE_PARAMETERS[metric.key], ...(water ? WATER_PARAMETERS[metric.key] : {}) };
       const card = textElement('article', '', 'farmer-card');
       card.appendChild(textElement('h3', info.title));
-      card.appendChild(textElement('span', L("Waiting for a reading."), 'farmer-badge'));
-      const details = farmerDetails(metric.key);
-      details.appendChild(textElement('p', info.meaning));
-      details.appendChild(textElement('p', T("What to do: {0}",[info.action]),'farmer-action'));
-      card.appendChild(details);
+      card.appendChild(textElement('p', info.meaning));
+      card.appendChild(textElement('p', L("Waiting for a reading.")));
       container.appendChild(card);
     });
     return;
@@ -2092,18 +1992,12 @@ function renderFarmerGuide() {
     const metric = METRICS.find(m => m.key === state.key);
     const card = textElement('article', '', 'farmer-card');
     card.appendChild(textElement('h3', info.title));
+    card.appendChild(textElement('p', info.meaning));
     card.appendChild(textElement('div', state.missing ? L("No current reading") : `${formatted(state.value, metric.decimals)}${info.unit ? ' ' + info.unit : ''}`, 'farmer-value'));
-    const status = farmerStatus(state);
-    const badge = stale ? L("Older reading") : future ? L("Check device clock") : status.label;
-    card.appendChild(textElement('span', badge, 'farmer-badge' + (stale || future || status.check ? ' check' : status.optimal ? ' optimal' : '')));
-    card.appendChild(textElement('p', T("Trend: {0}",[state.badge])));
-    const details = farmerDetails(state.key);
-    details.appendChild(textElement('p', info.meaning));
-    if (status.range) details.appendChild(textElement('p',T("Target range: {0}–{1}",status.range)));
-    if (status.message) details.appendChild(textElement('p',status.message));
-    details.appendChild(textElement('p', (info.interpretation ? info.interpretation + ' ' : '') + state.message));
-    details.appendChild(textElement('p', T("What to do: {0}", [info.action]), 'farmer-action'));
-    card.appendChild(details);
+    const badge = stale ? L("Older reading") : future ? L("Check device clock") : state.badge;
+    card.appendChild(textElement('span', badge, 'farmer-badge' + (stale || future || state.direction || state.missing ? ' check' : '')));
+    card.appendChild(textElement('p', (info.interpretation ? info.interpretation + ' ' : '') + state.message));
+    card.appendChild(textElement('p', T("What to do: {0}", [info.action]), 'farmer-action'));
     container.appendChild(card);
   }
   const completeness = states.filter(s => !s.missing).length;
