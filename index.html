@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>GermiSeed Soil & Water Telemetry Dashboard</title>
+  <title>Germiseed Soil & Water Telemetry Dashboard</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -65,6 +65,14 @@
       border-radius: 1rem;
       box-shadow: 0 8px 30px rgba(14,165,233,.16);
     }
+    .farmer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 1rem; }
+    .farmer-card { background: #111e32; border: 1px solid #475569; border-radius: .8rem; padding: 1.15rem; }
+    .farmer-card h3 { font-size: 1.05rem; font-weight: 700; }
+    .farmer-card p { margin-top: .6rem; font-size: .92rem; line-height: 1.55; color: #cbd5e1; }
+    .farmer-value { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-top: .7rem; }
+    .farmer-badge { display: inline-block; border-radius: 1rem; padding: .22rem .65rem; margin-top: .65rem; font-size: .8rem; color: #bae6fd; background: #16405d; }
+    .farmer-badge.check { color: #fde68a; background: #593e19; }
+    .farmer-action { border-top: 1px solid #334155; padding-top: .6rem; }
     .mode-controls { display: flex; gap: .5rem; flex-wrap: wrap; }
     .mode-btn {
       min-width: 9rem;
@@ -90,8 +98,14 @@
       <div>
         <h2 class="text-xl font-bold">🌱 Soil / 💧 Aquarium Water</h2>
         <p id="activeModeText" class="text-sm text-sky-100 mt-1">Showing soil readings. Switch sensing mode here.</p>
-        <p class="text-xs text-sky-200 mt-1">Soil + Water dashboard • mode controls</p>
+        <p class="text-xs text-sky-200 mt-1">Soil + Water dashboard • v6 bilingual guide</p>
       </div>
+      <label style="display:flex;align-items:center;gap:.65rem;font-weight:600">Language / Bahasa
+        <select id="languageSelect" aria-label="Language / Bahasa" class="select-sm" style="font-size:1rem;padding:.7rem;background:#0f172a;color:white;border:1px solid #7dd3fc;border-radius:.6rem">
+          <option value="en">English</option>
+          <option value="ms">Bahasa Malaysia</option>
+        </select>
+      </label>
       <div class="mode-controls" role="group" aria-label="Sensing mode">
         <button id="soilModeBtn" type="button" aria-pressed="true" class="mode-btn">🌱 Soil mode</button>
         <button id="waterModeBtn" type="button" aria-pressed="false" class="mode-btn">💧 Water mode</button>
@@ -103,13 +117,20 @@
         <div class="flex items-center gap-3">
           <div id="modeIcon" class="h-11 w-11 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-2xl">🌱</div>
           <div>
-            <h1 id="dashboardTitle" class="text-2xl md:text-3xl font-bold tracking-tight">GermiSeed Soil Telemetry</h1>
+            <h1 id="dashboardTitle" class="text-2xl md:text-3xl font-bold tracking-tight">Germiseed Soil Telemetry</h1>
             <p id="dashboardSubtitle" class="text-sm text-slate-400">ESP32-S3 RS485 soil probe • Google Sheets telemetry • UiTM • Dr Syahira Binti Jos</p>
           </div>
         </div>
       </div>
 
       <div class="flex flex-wrap items-center gap-3">
+        <label class="text-xs text-slate-400">CSV date order
+          <select id="dateOrderSelect" class="select-sm text-sm" aria-label="CSV date order">
+            <option value="AUTO">Auto detect</option>
+            <option value="DMY">Day / Month / Year</option>
+            <option value="MDY">Month / Day / Year</option>
+          </select>
+        </label>
         <span id="statusIndicator"
               class="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300">
           <span id="statusText">● Waiting for data</span>
@@ -155,6 +176,8 @@
         </div>
       </div>
     </header>
+
+    <p id="timestampDiagnostics" role="status" class="text-sm text-amber-200" hidden>Timestamp checks: waiting for CSV data.</p>
 
     <section id="waterNotice" class="panel p-4 border-sky-700/50 text-sm text-sky-100" style="display:none" aria-live="polite">
       <strong>Aquarium water view:</strong> Reported pH, temperature, EC and salinity are shown as trends; soil moisture and NPK do not measure aquarium water quality. Verify this probe is rated for immersion and calibrated for water before interpreting readings. It does not measure ammonia, nitrite or dissolved oxygen.
@@ -244,6 +267,24 @@
       </div>
     </section>
 
+    <section class="panel p-5" aria-labelledby="farmerHeading">
+      <h2 id="farmerHeading" class="text-xl font-bold">Your soil, explained simply</h2>
+      <p class="text-sm text-slate-400 mt-1">What each reading means, what has changed, and what you can check next.</p>
+      <div class="bg-emerald-950/25 rounded-xl border border-emerald-800/50 p-4 mt-4">
+        <h3 class="font-semibold">What to check first</h3>
+        <p id="farmerSummary" class="text-slate-200 text-sm mt-2" aria-live="polite">Waiting for the latest sensor reading.</p>
+        <p id="farmerFreshness" class="text-slate-400 text-xs mt-2">Checking when this reading was taken.</p>
+      </div>
+      <div id="farmerCards" class="farmer-grid mt-4"></div>
+      <p id="farmerModeNote" class="text-sm text-slate-400 mt-4"></p>
+      <p class="text-sm text-slate-400 mt-3">A reading staying steady does not prove that plants or fish are healthy. The guide compares readings with recent history; the best target depends on your crop or fish, soil type, and a properly checked probe.</p>
+      <details class="mt-3 text-xs text-slate-400">
+        <summary class="cursor-pointer">Where this guidance comes from</summary>
+        <p class="mt-2">Use crop-specific soil tests to choose fertiliser and lime, and soil-specific moisture checks to plan watering.</p>
+        <p class="mt-2"><a class="text-sky-300 underline" href="https://extension.umn.edu/agriculture/specialty-crops/soil-testing-on-fruit-and-vegetable-farms" target="_blank" rel="noopener noreferrer">University of Minnesota: soil testing for farmers</a> · <a class="text-sky-300 underline" href="https://extension.okstate.edu/fact-sheets/understanding-soil-water-content-and-thresholds-for-irrigation-management" target="_blank" rel="noopener noreferrer">Oklahoma State: soil moisture and watering</a> · <a class="text-sky-300 underline" href="https://extension.psu.edu/management-of-fish-ponds-in-pennsylvania" target="_blank" rel="noopener noreferrer">Penn State: fish water-quality needs</a></p>
+      </details>
+    </section>
+
     <!-- Charts -->
     <section class="grid grid-cols-1 xl:grid-cols-2 gap-6">
       <div class="panel p-5">
@@ -291,35 +332,41 @@
     <section class="panel p-5" aria-labelledby="aiHeading">
       <div class="flex flex-col md:flex-row md:items-start justify-between gap-3">
         <div>
-          <h2 id="aiHeading" class="text-lg font-semibold">TensorFlow.js AI Analytics</h2>
-          <p class="text-sm text-slate-400">Models train on this browser's selected Google Sheet history. No AI API key or paid inference.</p>
+          <h2 id="aiHeading" class="text-lg font-semibold">AI: what your readings are telling us</h2>
+          <p class="text-sm text-slate-400">The AI compares your latest readings with earlier ones. The simple guide above works while the AI is learning.</p>
         </div>
         <span id="aiStatus" role="status" aria-live="polite" class="text-xs text-amber-300">Waiting for data</span>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
         <div class="bg-slate-950/35 rounded-xl border border-slate-700 p-4">
-          <p class="text-xs uppercase text-slate-400">Latest pattern</p>
+          <p class="text-xs uppercase text-slate-400">Have the readings changed?</p>
           <p id="aiPattern" class="text-xl font-semibold mt-2">--</p>
-          <p id="aiPatternDetail" class="text-xs text-slate-400 mt-2">Awaiting enough complete samples.</p>
+          <p id="aiPatternDetail" class="text-xs text-slate-400 mt-2">The AI is learning what your usual readings look like.</p>
         </div>
         <div class="bg-slate-950/35 rounded-xl border border-slate-700 p-4">
-          <p class="text-xs uppercase text-slate-400">Next-sample forecast</p>
-          <div id="aiForecast" class="text-sm text-slate-200 mt-2">Awaiting enough regularly spaced samples.</div>
+          <p class="text-xs uppercase text-slate-400">What may happen next?</p>
+          <div id="aiForecast" class="text-sm text-slate-200 mt-2">The AI needs more readings arriving at steady intervals before it can predict ahead.</div>
         </div>
         <div class="bg-slate-950/35 rounded-xl border border-slate-700 p-4">
-          <p class="text-xs uppercase text-slate-400">Sensor relationships</p>
+          <p class="text-xs uppercase text-slate-400">Which readings move together?</p>
           <p id="aiCorrelation" class="text-sm text-slate-200 mt-2">Awaiting data.</p>
         </div>
       </div>
       <div class="bg-emerald-950/25 rounded-xl border border-emerald-900/50 p-4 mt-4">
-        <h3 class="text-sm font-semibold">Automatic insight</h3>
+        <h3 class="text-sm font-semibold">AI in everyday language</h3>
         <p id="aiInsight" class="text-sm text-slate-300 mt-2">Waiting for Google Sheet data.</p>
       </div>
-      <p class="text-xs text-slate-500 mt-3">Anomaly score is reconstruction error relative to a held-out baseline threshold, not a failure probability. Forecasts are experimental and show held-out mean absolute error; correlations do not imply causation. These estimates do not determine plant or fish health.</p>
+      <p class="text-sm text-slate-400 mt-3">The AI spots changes; it cannot tell you a fertiliser dose or certify that the soil or water is suitable. A prediction is an estimate, not a promise.</p>
+      <details class="text-xs text-slate-400 mt-3">
+        <summary class="cursor-pointer">Technical AI details</summary>
+        <p id="aiTechnical" class="mt-2">Waiting for a model calculation.</p>
+      </details>
     </section>
 
     <!-- Analytics -->
-    <section class="panel p-5">
+    <details class="panel p-5">
+      <summary class="cursor-pointer text-slate-200 font-semibold">Detailed numbers for technicians and researchers</summary>
+      <div class="mt-4">
       <div class="flex flex-col md:flex-row md:items-start justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold">Telemetry Analytics</h2>
@@ -363,14 +410,383 @@
           </div>
         </div>
       </div>
-    </section>
+      </div>
+    </details>
 
     <footer class="py-2 text-center text-xs text-slate-500">
-      GermiSeed soil & water dashboard • Google Sheets CSV feed
+      Germiseed soil & water dashboard • Google Sheets CSV feed
     </footer>
   </main>
 
 <script>
+const MS_TEXT = {
+  "s": "saat",
+  "🌱 Soil / 💧 Aquarium Water": "🌱 Tanah / 💧 Air Akuarium",
+  "Soil + Water dashboard • v6 bilingual guide": "Papan pemuka Tanah + Air • v6 dwibahasa",
+  "🌱 Soil mode": "🌱 Mod tanah",
+  "💧 Water mode": "💧 Mod air",
+  "CSV date order": "Susunan tarikh CSV",
+  "Auto detect": "Kesan secara automatik",
+  "Day / Month / Year": "Hari / Bulan / Tahun",
+  "Month / Day / Year": "Bulan / Hari / Tahun",
+  "● Waiting for data": "● Menunggu data",
+  "Range": "Tempoh",
+  "Resolution": "Selang paparan",
+  "All": "Semua",
+  "Auto": "Automatik",
+  "Refresh": "Muat semula",
+  "Auto-refresh": "Muat semula automatik",
+  "Latest sample": "Bacaan terkini",
+  "Sample age": "Usia bacaan",
+  "Rows loaded": "Baris dimuatkan",
+  "Last dashboard sync": "Kemas kini terakhir",
+  "Never": "Belum pernah",
+  "Soil Moisture": "Kelembapan tanah",
+  "Temperature": "Suhu",
+  "Electrical Conductivity": "Kekonduksian elektrik",
+  "Salinity": "Kemasinan",
+  "probe units": "unit prob",
+  "Nitrogen (N)": "Nitrogen (N)",
+  "Phosphorus (P)": "Fosforus (P)",
+  "Potassium (K)": "Kalium (K)",
+  "Supply Voltage": "Voltan bekalan",
+  "Data Quality": "Kualiti data",
+  "Reading Completeness": "Kelengkapan bacaan",
+  "Waiting for samples": "Menunggu bacaan",
+  "Your soil, explained simply": "Bacaan tanah anda, diterangkan dengan mudah",
+  "Your aquarium readings, explained simply": "Bacaan akuarium anda, diterangkan dengan mudah",
+  "What each reading means, what has changed, and what you can check next.": "Maksud setiap bacaan, perubahan yang berlaku dan perkara yang boleh anda semak.",
+  "What to check first": "Perkara yang perlu disemak dahulu",
+  "Waiting for the latest sensor reading.": "Menunggu bacaan sensor terkini.",
+  "Checking when this reading was taken.": "Menyemak masa bacaan diambil.",
+  "A reading staying steady does not prove that plants or fish are healthy. The guide compares readings with recent history; the best target depends on your crop or fish, soil type, and a properly checked probe.": "Bacaan yang tidak berubah bukan bukti tanaman atau ikan sihat. Panduan ini membandingkan bacaan dengan bacaan sebelumnya. Sasaran yang sesuai bergantung pada tanaman atau ikan, jenis tanah dan prob yang telah diperiksa.",
+  "Where this guidance comes from": "Sumber panduan ini",
+  "Use crop-specific soil tests to choose fertiliser and lime, and soil-specific moisture checks to plan watering.": "Gunakan ujian tanah mengikut tanaman untuk memilih baja dan kapur. Semak kelembapan mengikut jenis tanah sebelum merancang penyiraman.",
+  "University of Minnesota: soil testing for farmers": "University of Minnesota: ujian tanah untuk petani",
+  "Oklahoma State: soil moisture and watering": "Oklahoma State: kelembapan tanah dan penyiraman",
+  "Penn State: fish water-quality needs": "Penn State: keperluan kualiti air untuk ikan",
+  "pH & Soil Moisture": "pH dan kelembapan tanah",
+  "Acidity/alkalinity and volumetric moisture trend": "Perubahan keasidan/kealkalian dan kelembapan tanah",
+  "Temperature & EC": "Suhu dan EC",
+  "Root-zone temperature and electrical conductivity": "Suhu di kawasan akar dan kekonduksian elektrik",
+  "NPK Nutrient Trend": "Perubahan nutrien NPK",
+  "Nitrogen, phosphorus and potassium": "Nitrogen, fosforus dan kalium",
+  "Soil salinity trend reported by the RS485 probe": "Perubahan kemasinan tanah yang dilaporkan oleh prob RS485",
+  "System Supply Voltage (Vsys)": "Voltan bekalan sistem (Vsys)",
+  "Device supply telemetry": "Bacaan bekalan kuasa peranti",
+  "AI: what your readings are telling us": "AI: maksud bacaan anda",
+  "The AI compares your latest readings with earlier ones. The simple guide above works while the AI is learning.": "AI membandingkan bacaan terkini dengan bacaan sebelumnya. Panduan mudah di atas boleh digunakan semasa AI masih belajar.",
+  "Waiting for data": "Menunggu data",
+  "Have the readings changed?": "Adakah bacaan berubah?",
+  "The AI is learning what your usual readings look like.": "AI sedang mempelajari corak bacaan biasa anda.",
+  "What may happen next?": "Apakah yang mungkin berlaku seterusnya?",
+  "The AI needs more readings arriving at steady intervals before it can predict ahead.": "AI memerlukan lebih banyak bacaan pada selang masa yang tetap sebelum dapat membuat ramalan.",
+  "Which readings move together?": "Bacaan manakah yang berubah bersama?",
+  "Awaiting data.": "Menunggu data.",
+  "AI in everyday language": "Penjelasan AI dalam bahasa mudah",
+  "Waiting for Google Sheet data.": "Menunggu data Google Sheet.",
+  "The AI spots changes; it cannot tell you a fertiliser dose or certify that the soil or water is suitable. A prediction is an estimate, not a promise.": "AI mengesan perubahan. AI tidak dapat menentukan dos baja atau mengesahkan kesesuaian tanah atau air. Ramalan ialah anggaran, bukan kepastian.",
+  "Technical AI details": "Butiran teknikal AI",
+  "Waiting for a model calculation.": "Menunggu pengiraan model.",
+  "Detailed numbers for technicians and researchers": "Butiran angka untuk juruteknik dan penyelidik",
+  "Telemetry Analytics": "Analisis bacaan sensor",
+  "Local browser analytics for mean, range, trend and statistical outliers in the selected window.": "Analisis dalam pelayar bagi purata, julat, perubahan dan bacaan luar biasa dalam tempoh pilihan.",
+  "Recompute": "Kira semula",
+  "Metric": "Parameter",
+  "Last": "Terkini",
+  "Mean": "Purata",
+  "Min": "Minimum",
+  "Max": "Maksimum",
+  "Trend/hr": "Perubahan/jam",
+  "Outliers": "Bacaan luar biasa",
+  "Detected anomalies": "Bacaan luar biasa dikesan",
+  "No data yet.": "Belum ada data.",
+  "Data notes": "Nota data",
+  "Germiseed soil & water dashboard • Google Sheets CSV feed": "Papan pemuka tanah dan air Germiseed • Data CSV Google Sheets",
+  "Showing aquarium water readings. Switch back to Soil mode here.": "Memaparkan bacaan air akuarium. Tukar semula kepada mod tanah di sini.",
+  "Showing soil readings. Switch to Water mode here.": "Memaparkan bacaan tanah. Tukar kepada mod air di sini.",
+  "Showing soil readings. Switch sensing mode here.": "Memaparkan bacaan tanah. Tukar mod pengesanan di sini.",
+  "Germiseed Aquarium Water Trends": "Perubahan bacaan air akuarium Germiseed",
+  "Germiseed Soil Telemetry": "Bacaan tanah Germiseed",
+  "Germiseed Soil & Water Telemetry Dashboard": "Papan pemuka bacaan tanah dan air Germiseed",
+  "ESP32-S3 RS485 probe • reported water trends • Google Sheets • UiTM • Dr Syahira Binti Jos": "Prob ESP32-S3 RS485 • Perubahan bacaan air • Google Sheets • UiTM • Dr Syahira Binti Jos",
+  "ESP32-S3 RS485 soil probe • Google Sheets telemetry • UiTM • Dr Syahira Binti Jos": "Prob tanah ESP32-S3 RS485 • Bacaan Google Sheets • UiTM • Dr Syahira Binti Jos",
+  "Reported pH": "pH yang dilaporkan",
+  "Reported acidity/alkalinity trend; verify water calibration": "Perubahan keasidan/kealkalian yang dilaporkan; semak penentukuran untuk air",
+  "Reported water temperature and electrical conductivity trends": "Perubahan suhu air dan kekonduksian elektrik yang dilaporkan",
+  "Reported probe salinity; units and calibration must be verified": "Kemasinan yang dilaporkan oleh prob; unit dan penentukuran perlu disahkan",
+  "Reported pH • verify calibration in water": "pH yang dilaporkan • semak penentukuran untuk air",
+  "Calibrated probe value": "Nilai prob yang ditentukur",
+  "Only rows tagged 'water' in the optional medium column appear here.": "Hanya baris bertanda 'water' dalam lajur medium dipaparkan di sini.",
+  "This Sheet has no medium tags: both modes currently show the same history. Add a 'medium' column with soil/water values to separate them.": "Sheet ini tiada label medium: kedua-dua mod memaparkan sejarah yang sama. Tambah lajur 'medium' dengan nilai soil/water untuk memisahkannya.",
+  "Aquarium water view:": "Paparan air akuarium:",
+  "Reported pH, temperature, EC and salinity are shown as trends; soil moisture and NPK do not measure aquarium water quality. Verify this probe is rated for immersion and calibrated for water before interpreting readings. It does not measure ammonia, nitrite or dissolved oxygen.": "Perubahan bacaan pH, suhu, EC dan kemasinan dipaparkan. Kelembapan tanah dan NPK tidak mengukur kualiti air akuarium. Pastikan prob sesuai untuk direndam dan ditentukur untuk air. Prob ini tidak mengukur ammonia, nitrit atau oksigen terlarut.",
+  "pH — soil acidity": "pH — keasidan tanah",
+  "This shows whether the soil is acidic, neutral, or alkaline. It affects how easily roots can take up plant food.": "Bacaan ini menunjukkan sama ada tanah berasid, neutral atau beralkali. Keasidan mempengaruhi keupayaan akar menyerap nutrien.",
+  "Compare this with the pH needed by your crop. Confirm with a soil test before adding lime or products that change pH.": "Bandingkan dengan pH yang diperlukan oleh tanaman anda. Sahkan melalui ujian tanah sebelum menambah kapur atau bahan yang mengubah pH.",
+  "Moisture — water in the soil": "Kelembapan — air dalam tanah",
+  "This is the probe's estimate of water around it. The same percentage can mean different things in sandy and clay soils.": "Ini ialah anggaran air di sekeliling prob. Peratus yang sama boleh membawa maksud berbeza bagi tanah berpasir dan tanah liat.",
+  "Feel or inspect the soil near the roots, and check other spots before changing watering.": "Periksa tanah berhampiran akar dan di beberapa tempat lain sebelum mengubah penyiraman.",
+  "Temperature — warmth around the roots": "Suhu — tahap panas di sekeliling akar",
+  "This shows how warm or cool the soil is where the probe sits. Roots and seeds respond differently depending on the crop.": "Ini menunjukkan tahap panas atau sejuk tanah di lokasi prob. Tindak balas akar dan benih bergantung pada jenis tanaman.",
+  "Compare with your crop's growing needs. Check the probe depth and compare morning and afternoon readings.": "Bandingkan dengan keperluan tanaman anda. Semak kedalaman prob dan bandingkan bacaan pagi dengan petang.",
+  "EC — dissolved salts and minerals": "EC — garam dan mineral terlarut",
+  "EC measures how easily electricity passes through the soil. Water and dissolved salts, including fertiliser salts, affect it. It does not tell which nutrient is present.": "EC mengukur kemudahan arus elektrik melalui tanah. Air dan garam terlarut, termasuk garam baja, mempengaruhinya. EC tidak mengenal pasti nutrien tertentu.",
+  "Check recent watering and fertiliser use. Use a suitable salt test if you suspect salt build-up; do not add fertiliser just because EC is low.": "Semak penyiraman dan penggunaan baja terkini. Gunakan ujian garam yang sesuai jika disyaki berlaku pengumpulan garam. Jangan tambah baja hanya kerana EC rendah.",
+  "Salinity — the probe's salt reading": "Kemasinan — bacaan garam daripada prob",
+  "This is another reported salt-related reading. Too much salt can make it harder for roots to take up water. Its units must be checked in the probe manual.": "Ini ialah bacaan berkaitan garam. Garam berlebihan boleh menyukarkan akar menyerap air. Semak unit bacaan dalam manual prob.",
+  "Watch changes at the same spot. Confirm the salt reading and check irrigation water before deciding how to manage salts.": "Pantau perubahan di lokasi yang sama. Sahkan bacaan garam dan semak air pengairan sebelum menentukan tindakan.",
+  "Nitrogen (N) — leaf and stem growth": "Nitrogen (N) — pertumbuhan daun dan batang",
+  "Plants use nitrogen to grow leaves and stems. This is the probe's reported estimate; the number alone cannot tell you whether the crop needs more.": "Tanaman menggunakan nitrogen untuk pertumbuhan daun dan batang. Ini ialah anggaran prob. Angka ini sahaja tidak menentukan sama ada tanaman memerlukan lebih nitrogen.",
+  "Check plant growth and your fertiliser records. Get a crop-specific soil or plant test before choosing a nitrogen dose.": "Semak pertumbuhan tanaman dan rekod pembajaan. Dapatkan ujian tanah atau tanaman yang sesuai sebelum menentukan dos nitrogen.",
+  "Phosphorus (P) — roots and plant energy": "Fosforus (P) — akar dan tenaga tanaman",
+  "Plants use phosphorus for energy and growth, including roots. A probe estimate does not establish a shortage.": "Tanaman menggunakan fosforus untuk tenaga dan pertumbuhan, termasuk akar. Anggaran prob tidak mengesahkan kekurangan fosforus.",
+  "Use a soil test for your crop before buying phosphorus fertiliser. Recheck an unexpected probe change.": "Gunakan ujian tanah mengikut tanaman sebelum membeli baja fosforus. Semak semula perubahan bacaan yang tidak dijangka.",
+  "Potassium (K) — water use and plant strength": "Kalium (K) — penggunaan air dan kekuatan tanaman",
+  "Plants use potassium to regulate water and support growth. This probe reading does not establish how much fertiliser is needed.": "Tanaman menggunakan kalium untuk mengawal penggunaan air dan menyokong pertumbuhan. Bacaan prob ini tidak menentukan jumlah baja yang diperlukan.",
+  "Check crop condition and confirm with a soil test before changing potassium fertiliser.": "Periksa keadaan tanaman dan sahkan melalui ujian tanah sebelum mengubah pembajaan kalium.",
+  "Power supply — energy for the device": "Bekalan kuasa — tenaga untuk peranti",
+  "This shows the voltage reaching the electronics. It describes the device, rather than soil fertility or water quality.": "Ini menunjukkan voltan yang diterima oleh peranti elektronik. Bacaan ini berkaitan peranti, bukan kesuburan tanah atau kualiti air.",
+  "Compare with your device's normal supply voltage. If it is falling, check the power source, cable and connections.": "Bandingkan dengan voltan bekalan biasa peranti. Jika voltan menurun, semak sumber kuasa, kabel dan sambungan.",
+  "pH — water acidity": "pH — keasidan air",
+  "This shows whether the water is acidic, neutral, or alkaline. The suitable level depends on the fish you keep.": "Ini menunjukkan sama ada air berasid, neutral atau beralkali. Tahap yang sesuai bergantung pada jenis ikan.",
+  "Compare with the needs of your fish and confirm with a water pH test. Avoid changing pH based on one reading.": "Bandingkan dengan keperluan ikan dan sahkan menggunakan ujian pH air. Jangan ubah pH berdasarkan satu bacaan sahaja.",
+  "Temperature — warmth of the water": "Suhu — tahap panas air",
+  "This is the reported water temperature. Different fish need different temperatures.": "Ini ialah suhu air yang dilaporkan. Ikan yang berbeza memerlukan suhu yang berbeza.",
+  "Compare with the needs of your fish and an aquarium thermometer. Check the heater and position of the probe.": "Bandingkan dengan keperluan ikan dan termometer akuarium. Semak pemanas serta kedudukan prob.",
+  "This indicates dissolved salts and minerals in the water. It cannot tell you how much ammonia or nitrite is present.": "Ini menunjukkan garam dan mineral terlarut dalam air. Bacaan ini tidak menentukan jumlah ammonia atau nitrit.",
+  "Compare with your usual tank water and source water. Use separate aquarium tests for ammonia and nitrite.": "Bandingkan dengan bacaan biasa air akuarium dan sumber air. Gunakan ujian akuarium berasingan untuk ammonia dan nitrit.",
+  "Salinity — reported salt reading": "Kemasinan — bacaan garam yang dilaporkan",
+  "This is the probe's salt-related reading. Do not treat unknown probe units as aquarium salt concentration.": "Ini ialah bacaan prob berkaitan garam. Jangan anggap unit prob yang tidak diketahui sebagai kepekatan garam akuarium.",
+  "Verify the units and water calibration. Use an appropriate aquarium salt test before adding salt or changing water chemistry.": "Sahkan unit dan penentukuran untuk air. Gunakan ujian garam akuarium yang sesuai sebelum menambah garam atau mengubah kimia air.",
+  "Reading missing": "Bacaan tiada",
+  "The latest sample has no usable value for this parameter. An earlier value is not being shown as current.": "Sampel terkini tiada nilai yang boleh digunakan untuk parameter ini. Nilai lama tidak dipaparkan sebagai bacaan terkini.",
+  "First readings": "Bacaan awal",
+  "The latest reading is shown. Five earlier readings are needed to describe a recent change.": "Bacaan terkini dipaparkan. Lima bacaan sebelumnya diperlukan untuk menerangkan perubahan.",
+  "After a data gap": "Selepas jeda data",
+  "Earlier readings are separated by a long pause. Collect more recent readings before comparing changes.": "Terdapat jeda panjang antara bacaan. Kumpulkan lebih banyak bacaan terkini sebelum membandingkan perubahan.",
+  "percentage points": "mata peratusan",
+  "Up": "Naik",
+  "Down": "Turun",
+  "Higher than recently": "Lebih tinggi berbanding sebelumnya",
+  "Lower than recently": "Lebih rendah berbanding sebelumnya",
+  "Little recent change": "Sedikit perubahan terkini",
+  "Check the next update and the probe connection. If this value stays missing, check the probe and its readings.": "Semak kemas kini seterusnya dan sambungan prob. Jika nilai masih tiada, periksa prob dan bacaannya.",
+  "The reported reading is on the acidic side of the pH scale.": "Bacaan yang dilaporkan berada pada bahagian berasid dalam skala pH.",
+  "The reported reading is on the alkaline side of the pH scale.": "Bacaan yang dilaporkan berada pada bahagian beralkali dalam skala pH.",
+  "The reported pH is neutral.": "pH yang dilaporkan adalah neutral.",
+  "The probe is reporting more water around it than recently.": "Prob melaporkan lebih banyak air di sekelilingnya berbanding sebelumnya.",
+  "The probe is reporting less water around it than recently.": "Prob melaporkan kurang air di sekelilingnya berbanding sebelumnya.",
+  "Check whether it has rained or you watered. Look for standing water and check drainage before adding more water.": "Semak sama ada hujan turun atau penyiraman dilakukan. Periksa air bertakung dan saliran sebelum menambah air.",
+  "Check the soil near the roots and the watering system. Water only if those checks show the crop needs it.": "Semak tanah berhampiran akar dan sistem penyiraman. Siram hanya jika pemeriksaan menunjukkan tanaman memerlukan air.",
+  "warmer": "lebih panas",
+  "cooler": "lebih sejuk",
+  "A change can follow watering, evaporation, fertiliser use or a change in probe contact. The reading alone does not identify the cause.": "Perubahan boleh berlaku selepas penyiraman, penyejatan, pembajaan atau perubahan sentuhan prob. Bacaan sahaja tidak mengenal pasti puncanya.",
+  "This change is a reason to recheck the reading. It does not prove that the crop has used up, or gained, that amount of plant food.": "Semak semula bacaan yang berubah ini. Ia tidak membuktikan tanaman telah menggunakan atau memperoleh jumlah nutrien tersebut.",
+  "The device is receiving a higher voltage than recently.": "Peranti menerima voltan lebih tinggi berbanding sebelumnya.",
+  "The device is receiving a lower voltage than recently.": "Peranti menerima voltan lebih rendah berbanding sebelumnya.",
+  "Soil moisture measures water around soil particles; N, P and K are soil nutrient estimates. These soil readings are left out of the aquarium guide. They do not test aquarium ammonia, nitrite, nitrate or oxygen. Verify that this probe is suitable and calibrated for water.": "Kelembapan tanah mengukur air di sekitar zarah tanah. N, P dan K ialah anggaran nutrien tanah. Bacaan tanah ini tidak dimasukkan dalam panduan akuarium dan tidak menguji ammonia, nitrit, nitrat atau oksigen. Pastikan prob sesuai dan ditentukur untuk air.",
+  "N, P and K stand for nitrogen, phosphorus and potassium: three nutrients plants use. The unit mg/kg means milligrams per kilogram of soil. Track the probe readings and use crop-specific test results to choose fertiliser amounts.": "N, P dan K bermaksud nitrogen, fosforus dan kalium: tiga nutrien yang digunakan tanaman. Unit mg/kg bermaksud miligram bagi setiap kilogram tanah. Pantau bacaan prob dan gunakan hasil ujian mengikut tanaman untuk menentukan jumlah baja.",
+  "There is no current reading to interpret.": "Tiada bacaan terkini untuk diterangkan.",
+  "Waiting for a reading.": "Menunggu bacaan.",
+  "No current reading": "Tiada bacaan terkini",
+  "Older reading": "Bacaan lama",
+  "Check device clock": "Semak jam peranti",
+  "Reading completeness — is anything missing?": "Kelengkapan bacaan — adakah nilai yang tiada?",
+  "What to do: keep the probe clean and repeat unusual readings at nearby spots or with a checked meter.": "Tindakan: pastikan prob bersih dan ulang bacaan luar biasa di tempat berhampiran atau menggunakan meter yang telah diperiksa.",
+  "What to do: check the probe cable, power source and next update for the missing values.": "Tindakan: semak kabel prob, sumber kuasa dan kemas kini seterusnya bagi nilai yang tiada.",
+  "These readings are older than five minutes. Restore fresh updates before deciding what to change. The cards below explain the last available readings.": "Bacaan ini melebihi lima minit. Pulihkan kemas kini sebelum membuat keputusan. Kad di bawah menerangkan bacaan terakhir yang tersedia.",
+  "The latest reading is slightly ahead of the dashboard clock. Check the device and dashboard clocks before relying on timing or forecasts.": "Masa bacaan terkini sedikit mendahului jam papan pemuka. Semak jam peranti dan papan pemuka sebelum menggunakan masa atau ramalan.",
+  "higher": "lebih tinggi",
+  "lower": "lebih rendah",
+  " More changes are explained in the cards below.": " Perubahan lain diterangkan dalam kad di bawah.",
+  "The latest readings are available. More readings are needed to describe recent changes; you can already use the cards to understand each number.": "Bacaan terkini tersedia. Lebih banyak bacaan diperlukan untuk menerangkan perubahan. Kad ini sudah boleh digunakan untuk memahami setiap angka.",
+  "No large recent changes were found where comparison was possible. Check the cards below and compare with the needs of your crop or fish; steady readings can still be unsuitable.": "Tiada perubahan besar dikesan bagi bacaan yang boleh dibandingkan. Semak kad di bawah dan bandingkan dengan keperluan tanaman atau ikan. Bacaan yang stabil masih boleh tidak sesuai.",
+  "ahead of dashboard clock": "mendahului jam papan pemuka",
+  " ago": " yang lalu",
+  "AI check unavailable": "Semakan AI tidak tersedia",
+  "Waiting for readings": "Menunggu bacaan",
+  "Checking your readings": "Menyemak bacaan anda",
+  "The AI could not finish. The simple parameter guide above still explains available readings.": "AI tidak dapat menyelesaikan semakan. Panduan mudah di atas masih menerangkan bacaan yang tersedia.",
+  "The AI needs earlier readings to compare. Your simple parameter guide does not need to wait.": "AI memerlukan bacaan sebelumnya untuk perbandingan. Panduan mudah anda boleh digunakan sekarang.",
+  "A prediction will appear when enough suitable earlier readings are available.": "Ramalan akan dipaparkan apabila bacaan sebelumnya yang sesuai mencukupi.",
+  "Waiting to compare changes in the readings.": "Menunggu untuk membandingkan perubahan bacaan.",
+  "Start with the parameter cards above: each explains its reading, recent change, and a practical next check.": "Mulakan dengan kad parameter di atas. Setiap kad menerangkan bacaan, perubahan dan pemeriksaan yang boleh dilakukan.",
+  "Model unavailable": "Model tidak tersedia",
+  "Learning from earlier readings…": "Belajar daripada bacaan sebelumnya…",
+  "Model error": "Ralat model",
+  "pH (acidity)": "pH (keasidan)",
+  "soil moisture": "kelembapan tanah",
+  "water temperature": "suhu air",
+  "soil temperature": "suhu tanah",
+  "dissolved salts and minerals (EC)": "garam dan mineral terlarut (EC)",
+  "salt reading": "bacaan garam",
+  "nitrogen": "nitrogen",
+  "phosphorus": "fosforus",
+  "potassium": "kalium",
+  "device power voltage": "voltan kuasa peranti",
+  "Check the update time": "Semak masa kemas kini",
+  "Fresh data has stopped arriving. These comparisons describe older readings.": "Data baharu tidak lagi diterima. Perbandingan ini menerangkan bacaan lama.",
+  "The latest reading is ahead of the dashboard clock.": "Masa bacaan terkini mendahului jam papan pemuka.",
+  "Get fresh, correctly timed readings before making a decision. The guide above explains the last available measurements.": "Dapatkan bacaan baharu dengan masa yang betul sebelum membuat keputusan. Panduan di atas menerangkan bacaan terakhir yang tersedia.",
+  "Still learning your readings": "Masih mempelajari bacaan anda",
+  "The AI needs enough complete readings that vary over time. You can already use the simple parameter guide above.": "AI memerlukan bacaan lengkap yang mencukupi dan berubah dari semasa ke semasa. Panduan mudah di atas sudah boleh digunakan.",
+  "The AI is not ready to compare the combined readings yet. Each card above explains its parameter and any recent change without needing the AI to finish learning.": "AI belum bersedia membandingkan gabungan bacaan. Kad di atas menerangkan parameter dan perubahan tanpa perlu menunggu AI selesai belajar.",
+  "Something has changed": "Ada perubahan dikesan",
+  "Readings look familiar": "Bacaan serupa dengan sebelumnya",
+  "The combination of readings differs from what this probe usually reported. This does not identify the cause.": "Gabungan bacaan berbeza daripada corak biasa prob. Ini tidak mengenal pasti puncanya.",
+  "The latest combination is similar to earlier readings. It does not prove the soil or water meets the needs of your plants or fish.": "Gabungan bacaan terkini serupa dengan sebelumnya. Ini tidak membuktikan tanah atau air memenuhi keperluan tanaman atau ikan.",
+  "Start with the changed or missing readings in the guide above. Check whether the probe moved, watering changed or fertiliser was applied, then repeat the measurement before changing treatment.": "Mulakan dengan bacaan yang berubah atau tiada dalam panduan di atas. Semak sama ada prob beralih, penyiraman berubah atau baja digunakan. Ulang pengukuran sebelum mengubah rawatan.",
+  "The AI has not found an unusual combination in the latest reading. Use the parameter cards above to check acidity, water, warmth and plant food against your crop needs.": "AI tidak mengesan gabungan luar biasa dalam bacaan terkini. Gunakan kad di atas untuk menyemak keasidan, air, suhu dan nutrien mengikut keperluan tanaman.",
+  "The latest combination looks similar to earlier tank readings. Check the cards above against your fish needs, and use separate water tests for ammonia and nitrite.": "Gabungan terkini serupa dengan bacaan akuarium sebelumnya. Semak kad di atas mengikut keperluan ikan dan gunakan ujian air berasingan untuk ammonia dan nitrit.",
+  "Prediction paused until fresh, correctly timed readings arrive.": "Ramalan dihentikan sementara sehingga bacaan baharu dengan masa yang betul diterima.",
+  "Not ready to predict: readings need to arrive at steadier intervals. The current-reading guide still works.": "Belum bersedia membuat ramalan: bacaan perlu diterima pada selang masa yang lebih tetap. Panduan bacaan terkini masih boleh digunakan.",
+  "No useful prediction yet: on earlier data, the AI was no better than assuming the next reading stays the same.": "Belum ada ramalan yang berguna: berdasarkan data sebelumnya, ramalan AI tidak lebih baik daripada menganggap bacaan seterusnya kekal sama.",
+  "These readings changed too little for the AI to learn a useful prediction. Keep watching the actual measurements.": "Perubahan bacaan terlalu kecil untuk AI mempelajari ramalan yang berguna. Terus pantau bacaan sebenar.",
+  "More complete readings are needed before predicting ahead. The guide above already explains the latest measurements.": "Lebih banyak bacaan lengkap diperlukan untuk membuat ramalan. Panduan di atas sudah menerangkan bacaan terkini.",
+  "may stay about the same": "mungkin kekal hampir sama",
+  "may rise": "mungkin meningkat",
+  "may fall": "mungkin menurun",
+  "More changing readings are needed to see which parameters move together.": "Lebih banyak bacaan yang berubah diperlukan untuk mengenal pasti parameter yang berubah bersama.",
+  "rise and fall together": "meningkat dan menurun bersama",
+  "move in opposite directions": "berubah dalam arah bertentangan",
+  "No pair of readings moved closely together in this history. Check each parameter on its own.": "Tiada pasangan bacaan yang berubah rapat bersama dalam sejarah ini. Semak setiap parameter secara berasingan.",
+  " Their changes are almost identical. Check the probe manual and raw readings before treating them as separate evidence.": " Perubahannya hampir sama. Semak manual prob dan bacaan asal sebelum menganggapnya sebagai bukti berasingan.",
+  "Configure Google Sheet CSV URL": "Tetapkan URL CSV Google Sheet",
+  "Loading Google Sheet...": "Memuatkan Google Sheet...",
+  "Data error: ": "Ralat data: ",
+  "Choose a wider time range or check the optional medium column in the Google Sheet.": "Pilih tempoh yang lebih luas atau semak lajur medium dalam Google Sheet.",
+  "No ≥3σ statistical outliers detected in the selected window.": "Tiada bacaan luar biasa ≥3σ dikesan dalam tempoh pilihan.",
+  "Moisture (%)": "Kelembapan (%)",
+  "Temperature (°C)": "Suhu (°C)",
+  "Nitrogen": "Nitrogen",
+  "Phosphorus": "Fosforus",
+  "Potassium": "Kalium",
+  "future timestamp": "masa bacaan di hadapan",
+  "Sensing mode": "Mod pengesanan",
+  "Soil and water mode switch": "Suis mod tanah dan air",
+  "No {0} readings tagged in Google Sheet": "Tiada bacaan {0} berlabel dalam Google Sheet",
+  "Connected • latest {0} sample is stale": "Disambungkan • bacaan {0} terkini sudah lama",
+  "Live • {0} charts updated from Google Sheet": "Langsung • carta {0} dikemas kini daripada Google Sheet",
+  "CSV date order {0} (selected).": "Susunan tarikh CSV {0} (dipilih).",
+  "CSV date order {0} detected from unambiguous dates.": "Susunan tarikh CSV {0} dikesan daripada tarikh yang jelas.",
+  "{0} Times shown in {1}. Excluded: {2} invalid, {3} future, {4} too old; {5} duplicate timestamp/medium rows merged.": "{0} Masa dipaparkan mengikut {1}. Dikecualikan: {2} tidak sah, {3} masa depan, {4} terlalu lama; {5} baris dengan masa/medium sama digabungkan.",
+  "0 {0} / {1} valid": "0 {0} / {1} sah",
+  "No {0} rows available": "Tiada baris {0} tersedia",
+  "{0} {1} / {2} valid / {3} raw": "{0} {1} / {2} sah / {3} asal",
+  "{0} visible metrics • {1} implausible field(s) rejected across feed": "{0} parameter dipaparkan • {1} nilai di luar had ditolak daripada data",
+  "{0}s": "{0} saat",
+  "{0}m": "{0} minit",
+  "{0}h {1}m": "{0} jam {1} minit",
+  "{0}d {1}h": "{0} hari {1} jam",
+  "No {0} data in the selected time range.": "Tiada data {0} dalam tempoh pilihan.",
+  "About the same as the previous five readings, taken over approximately {0}.": "Hampir sama dengan lima bacaan sebelumnya, yang diambil sepanjang kira-kira {0}.",
+  "{0} by about {1}{2} compared with the middle value of the previous five readings (approximately {3}).": "{0} kira-kira {1}{2} berbanding nilai tengah lima bacaan sebelumnya (kira-kira {3}).",
+  "The water reading is {0} than recently.": "Bacaan air kini {0} berbanding sebelumnya.",
+  "The soil reading is {0} than recently.": "Bacaan tanah kini {0} berbanding sebelumnya.",
+  "No {0} readings in this time range. Choose a wider range or check the data feed.": "Tiada bacaan {0} dalam tempoh ini. Pilih tempoh lebih luas atau semak sumber data.",
+  "What to do: {0}": "Tindakan: {0}",
+  "{0} of {1} visible parameters have a usable value in the latest sample. A complete sample does not guarantee an accurate probe.": "{0} daripada {1} parameter yang dipaparkan mempunyai nilai dalam sampel terkini. Sampel lengkap tidak menjamin ketepatan prob.",
+  "Some latest readings are missing: {0}. Check the probe connection and next update first.": "Sebahagian bacaan terkini tiada: {0}. Semak sambungan prob dan kemas kini seterusnya dahulu.",
+  "{0} is {1} than recently. {2}": "{0} kini {1} berbanding sebelumnya. {2}",
+  "Last actual reading: {0} ({1}) • {2}. Changes compare the latest sample with five earlier readings; the chart resolution does not change this comparison.": "Bacaan sebenar terakhir: {0} ({1}) • {2}. Perubahan membandingkan sampel terkini dengan lima bacaan sebelumnya. Selang paparan carta tidak mengubah perbandingan ini.",
+  " {0} later reading{1} differed from the usual combination; check the chart for when the change happened.": " {0} bacaan selepas itu berbeza daripada gabungan biasa; semak carta untuk melihat masa perubahan berlaku.",
+  "Anomaly error {0}; threshold {1}; {2} inputs; {3} complete rows. Later exceedances: {4}.": "Ralat corak {0}; ambang {1}; {2} input; {3} baris lengkap. Bacaan selepas itu melebihi ambang: {4}.",
+  "At the next update, about {0} after the last reading:": "Pada kemas kini seterusnya, kira-kira {0} selepas bacaan terakhir:",
+  "{0} {1}: estimated {2}{3}.": "{0} {1}: anggaran {2}{3}.",
+  "When checked against earlier readings, the average prediction miss was {0}{1}.": "Apabila disemak dengan bacaan sebelumnya, purata beza ramalan daripada bacaan sebenar ialah {0}{1}.",
+  "Forecast checked on {0} later windows; horizon {1} seconds.": "Ramalan disemak pada {0} urutan bacaan selepas latihan; tempoh ramalan {1} saat.",
+  "{0} and {1} tended to {2} in this history. This does not prove one caused the other.": "{0} dan {1} cenderung {2} dalam sejarah ini. Ini tidak membuktikan satu menyebabkan yang lain.",
+  "Correlation: {0} / {1}, r={2}, {3} paired points.": "Hubungan: {0} / {1}, r={2}, {3} pasangan bacaan.",
+  "Edit <code class=\"text-emerald-300\">CONFIG.csvUrl</code> in this HTML file and paste the published Google Sheet CSV URL.": "Ubah <code class=\"text-emerald-300\">CONFIG.csvUrl</code> dalam fail HTML ini dan masukkan URL CSV Google Sheet yang diterbitkan.",
+  "Mixed DMY/MDY evidence: ambiguous dates excluded. Set one consistent date format in the Sheet.": "Terdapat format DMY dan MDY bercampur: tarikh yang tidak jelas dikecualikan. Gunakan satu format tarikh dalam Sheet.",
+  "CSV date order DMY assumed: no unambiguous slash dates found. Select MDY if your Sheet uses month/day/year.": "Susunan tarikh DMY diandaikan kerana tiada tarikh bertanda garis miring yang jelas. Pilih MDY jika Sheet menggunakan bulan/hari/tahun.",
+  "water-quality problems": "masalah kualiti air",
+  "agronomic faults": "masalah tanaman atau tanah",
+  "Chart render error: ": "Ralat paparan carta: ",
+  "Anomaly model: ": "Model corak: ",
+  "Forecast: ": "Ramalan: ",
+  "Unavailable.": "Tidak tersedia.",
+  "Checked ": "Disemak ",
+  " readings": " bacaan",
+  "1h": "1 jam",
+  "6h": "6 jam",
+  "12h": "12 jam",
+  "24h": "24 jam",
+  "7d": "7 hari",
+  "30d": "30 hari",
+  "1m": "1 minit",
+  "5m": "5 minit",
+  "15m": "15 minit",
+  "1d": "1 hari",
+  "Timestamp checks: waiting for CSV data.": "Semakan masa: menunggu data CSV.",
+  "Checked {0} readings": "Disemak {0} bacaan",
+  "\n    <div>{0} plotted/resampled point(s) in the selected window.</div>\n    <div class=\"mt-1\">{1} missing/invalid metric value(s) in this rendered dataset.</div>\n    <div class=\"mt-1 text-slate-400\">\n      Statistical outliers indicate unusual readings, not necessarily {2}.\n    </div>\n  ": "\n    <div>{0} titik bacaan dipaparkan dalam tempoh pilihan.</div>\n    <div class=\"mt-1\">{1} nilai parameter tiada/tidak sah dalam data paparan ini.</div>\n    <div class=\"mt-1 text-slate-400\">\n      Bacaan luar biasa menunjukkan bacaan yang berbeza, bukan semestinya {2}.\n    </div>\n  "
+};
+// Local UI translations; sensor values, Sheet headers and model inputs retain
+// their original keys. The two languages share the same analytics engine.
+let uiLanguage = 'en';
+let lastAiResults = null;
+let lastAiResultFingerprint = '';
+let staticLanguageNodes = [];
+let staticLanguageAttributes = [];
+
+function L(english) {
+  return uiLanguage === 'ms' ? (MS_TEXT[english] ?? english) : english;
+}
+function T(english, values = []) {
+  return L(english).replace(/\{(\d+)\}/g, (_, at) => {
+    const value = values[Number(at)];
+    if (uiLanguage === 'ms' && value === 'soil') return 'tanah';
+    if (uiLanguage === 'ms' && value === 'water') return 'air';
+    return String(value ?? '');
+  });
+}
+function captureStaticLanguageText() {
+  const walker = document.createTreeWalker(document.body, 4); // SHOW_TEXT
+  let node;
+  while ((node = walker.nextNode())) {
+    if (['SCRIPT', 'STYLE'].includes(node.parentElement?.tagName)) continue;
+    const english = node.nodeValue.trim();
+    if (MS_TEXT[english] !== undefined) staticLanguageNodes.push({ node, english, original: node.nodeValue });
+  }
+  document.querySelectorAll('[aria-label]').forEach(element => {
+    const english = element.getAttribute('aria-label');
+    if (MS_TEXT[english] !== undefined) staticLanguageAttributes.push({element, english});
+  });
+}
+function setLanguage(language, rerender = true) {
+  uiLanguage = language === 'ms' ? 'ms' : 'en';
+  document.documentElement.lang = uiLanguage;
+  document.title = L('Germiseed Soil & Water Telemetry Dashboard');
+  document.getElementById('languageSelect').value = uiLanguage;
+  staticLanguageNodes.forEach(({node, english, original}) => {
+    if (node.isConnected) node.nodeValue = original.replace(english, L(english));
+  });
+  staticLanguageAttributes.forEach(({element, english}) => element.setAttribute('aria-label', L(english)));
+  METRICS.forEach((metric, i) => { metric.label = L(EN_METRIC_LABELS[i]); });
+  for (const [key, info] of Object.entries(EN_SOIL_PARAMETERS)) {
+    for (const [field, value] of Object.entries(info)) SIMPLE_PARAMETERS[key][field] = L(value);
+  }
+  for (const [key, info] of Object.entries(EN_WATER_PARAMETERS)) {
+    for (const [field, value] of Object.entries(info)) WATER_PARAMETERS[key][field] = L(value);
+  }
+  try { localStorage.setItem('germiseed-language', uiLanguage); } catch (_) { /* optional persistence */ }
+  setSensingMode(sensingMode, false);
+  updateTimestampDiagnostics();
+  if (rerender) {
+    renderAll();
+    if (cleanData.length) updateModeStatus();
+    if (lastAiResults && lastAiResultFingerprint === aiLastFingerprint && !aiRunning) {
+      showAiResults(lastAiResults.data, lastAiResults.anomaly, lastAiResults.forecast, lastAiResults.correlation);
+      setAiStatus(T('Checked {0} readings', [lastAiResults.data.length]), 'text-emerald-300');
+    } else if (aiRunning) {
+      resetAiPanel('Language changed while model calculation is running.');
+      setAiStatus(L('Learning from earlier readings…'), 'text-sky-300');
+    }
+  }
+}
+
 /* ==========================================================================
    CONFIGURATION
    ==========================================================================
@@ -391,9 +807,15 @@
 const CONFIG = {
   csvUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRx6XPMlgLscuJQxpW4GH4Us_VCTHhfTV62nFLSGqXBgJlYSYKQW1su5jQ39aGbxrX7wn7QY8Y2Mxs8/pub?gid=0&single=true&output=csv",
 
-  // Malaysia / common Google Sheets display date convention.
-  // Change to "MDY" only if your Sheet exports dates as month/day/year.
-  dateOrder: "DMY",
+  // AUTO checks the entire export for unambiguous DMY/MDY dates.
+  // If every slash date is ambiguous, AUTO assumes DMY; use the page's
+  // CSV date order selector to override this for a month-first export.
+  dateOrder: "AUTO",
+  // Naive Sheet timestamps are Malaysian local time; zoned ISO/Unix times
+  // retain their own absolute time. Change these together for another site.
+  utcOffsetMinutes: 480,
+  displayTimeZone: "Asia/Kuching",
+  maxFutureMs: 5 * 60 * 1000,
 
   timestampColumn: "timestamp",
 
@@ -412,13 +834,13 @@ const CONFIG = {
 
 const METRICS = [
   { key: "ph",         label: "pH",              decimals: 2 },
-  { key: "moist",      label: "Moisture (%)",    decimals: 1 },
-  { key: "temp",       label: "Temperature (°C)",decimals: 1 },
+  { key: "moist",      label: L("Moisture (%)"),    decimals: 1 },
+  { key: "temp",       label: L("Temperature (°C)"),decimals: 1 },
   { key: "ec",         label: "EC (µS/cm)",      decimals: 1 },
-  { key: "salinity",   label: "Salinity",        decimals: 1 },
-  { key: "nitrogen",   label: "Nitrogen",        decimals: 1 },
-  { key: "phosphorus", label: "Phosphorus",      decimals: 1 },
-  { key: "potassium",  label: "Potassium",       decimals: 1 },
+  { key: "salinity",   label: L("Salinity"),        decimals: 1 },
+  { key: "nitrogen",   label: L("Nitrogen"),        decimals: 1 },
+  { key: "phosphorus", label: L("Phosphorus"),      decimals: 1 },
+  { key: "potassium",  label: L("Potassium"),       decimals: 1 },
   { key: "vsys",       label: "Vsys (V)",        decimals: 2 }
 ];
 
@@ -456,36 +878,36 @@ function setSensingMode(mode, rerender = true) {
   document.getElementById("soilModeBtn").setAttribute("aria-pressed", String(!water));
   document.getElementById("waterModeBtn").setAttribute("aria-pressed", String(water));
   document.getElementById("activeModeText").textContent = water
-    ? "Showing aquarium water readings. Switch back to Soil mode here."
-    : "Showing soil readings. Switch to Water mode here.";
+    ? L("Showing aquarium water readings. Switch back to Soil mode here.")
+    : L("Showing soil readings. Switch to Water mode here.");
   document.getElementById("dashboardTitle").textContent = water
-    ? "GermiSeed Aquarium Water Trends" : "GermiSeed Soil Telemetry";
+    ? L("Germiseed Aquarium Water Trends") : L("Germiseed Soil Telemetry");
   document.getElementById("dashboardSubtitle").textContent = water
-    ? "ESP32-S3 RS485 probe • reported water trends • Google Sheets • UiTM • Dr Syahira Binti Jos"
-    : "ESP32-S3 RS485 soil probe • Google Sheets telemetry • UiTM • Dr Syahira Binti Jos";
+    ? L("ESP32-S3 RS485 probe • reported water trends • Google Sheets • UiTM • Dr Syahira Binti Jos")
+    : L("ESP32-S3 RS485 soil probe • Google Sheets telemetry • UiTM • Dr Syahira Binti Jos");
   document.getElementById("modeIcon").textContent = water ? "💧" : "🌱";
   document.getElementById("waterNotice").style.display = water ? "" : "none";
   document.querySelectorAll("[data-soil-only]").forEach(el => {
     el.style.display = water ? "none" : "";
   });
-  document.getElementById("phChartTitle").textContent = water ? "Reported pH" : "pH & Soil Moisture";
+  document.getElementById("phChartTitle").textContent = water ? L("Reported pH") : L("pH & Soil Moisture");
   document.getElementById("phChartSubtitle").textContent = water
-    ? "Reported acidity/alkalinity trend; verify water calibration"
-    : "Acidity/alkalinity and volumetric moisture trend";
+    ? L("Reported acidity/alkalinity trend; verify water calibration")
+    : L("Acidity/alkalinity and volumetric moisture trend");
   document.getElementById("tempChartSubtitle").textContent = water
-    ? "Reported water temperature and electrical conductivity trends"
-    : "Root-zone temperature and electrical conductivity";
+    ? L("Reported water temperature and electrical conductivity trends")
+    : L("Root-zone temperature and electrical conductivity");
   document.getElementById("salinityChartSubtitle").textContent = water
-    ? "Reported probe salinity; units and calibration must be verified"
-    : "Soil salinity trend reported by the RS485 probe";
+    ? L("Reported probe salinity; units and calibration must be verified")
+    : L("Soil salinity trend reported by the RS485 probe");
   document.getElementById("phKpiHint").textContent = water
-    ? "Reported pH • verify calibration in water"
-    : "Calibrated probe value";
+    ? L("Reported pH • verify calibration in water")
+    : L("Calibrated probe value");
   document.getElementById("qualityCardLabel").textContent = water
-    ? "Reading Completeness" : "Data Quality";
+    ? L("Reading Completeness") : L("Data Quality");
   document.getElementById("mediumTagNotice").textContent = cleanData.some(row => row.medium)
-    ? "Only rows tagged 'water' in the optional medium column appear here."
-    : "This Sheet has no medium tags: both modes currently show the same history. Add a 'medium' column with soil/water values to separate them.";
+    ? L("Only rows tagged 'water' in the optional medium column appear here.")
+    : L("This Sheet has no medium tags: both modes currently show the same history. Add a 'medium' column with soil/water values to separate them.");
   try { localStorage.setItem("germiseed-sensing-mode", sensingMode); } catch (_) { /* storage may be blocked */ }
   if (rerender) {
     renderAll();
@@ -496,13 +918,13 @@ function setSensingMode(mode, rerender = true) {
 function updateModeStatus() {
   const rows = dataForMode();
   if (!rows.length) {
-    setStatus(`No ${sensingMode} readings tagged in Google Sheet`, false, false);
+    setStatus(T("No {0} readings tagged in Google Sheet", [sensingMode]), false, false);
     return;
   }
   const ageMs = Date.now() - rows[rows.length - 1].t.getTime();
   setStatus(ageMs > 5 * 60 * 1000
-    ? `Connected • latest ${sensingMode} sample is stale`
-    : `Live • ${sensingMode} charts updated from Google Sheet`, false,
+    ? T("Connected • latest {0} sample is stale", [sensingMode])
+    : T("Live • {0} charts updated from Google Sheet", [sensingMode]), false,
     ageMs <= 5 * 60 * 1000);
 }
 
@@ -545,6 +967,16 @@ timeRangeSelect.addEventListener("change", renderAll);
 resolutionSelect.addEventListener("change", renderAll);
 refreshBtn.addEventListener("click", loadData);
 refreshIntervalInput.addEventListener("change", resetTimer);
+document.getElementById("dateOrderSelect").addEventListener("change", event => {
+  CONFIG.dateOrder = event.target.value;
+  try { localStorage.setItem("germiseed-date-order", CONFIG.dateOrder); } catch (_) {}
+  if (cachedCsvRows.length) {
+    cleanData = sanitizeRows(cachedCsvRows);
+    setSensingMode(sensingMode, false);
+    renderAll();
+    updateModeStatus();
+  }
+});
 document.getElementById("soilModeBtn").addEventListener("click", () => setSensingMode("soil"));
 document.getElementById("waterModeBtn").addEventListener("click", () => setSensingMode("water"));
 document.getElementById("runAnalyticsBtn").addEventListener("click", () => {
@@ -643,78 +1075,90 @@ function safeNum(value) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+let resolvedDateOrder = "DMY";
+let timestampStats = { invalid: 0, future: 0, old: 0, duplicate: 0, ambiguous: 0, note: "" };
+let cachedCsvRows = [];
+
+function resolveDateOrder(rows) {
+  let dmy = 0, mdy = 0;
+  for (const row of rows) {
+    const match = String(row[CONFIG.timestampColumn] ?? "").trim()
+      .match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-]\d{4}(?:$|[ ,T])/);
+    if (!match) continue;
+    const a = Number(match[1]), b = Number(match[2]);
+    if (a > 12 && a <= 31 && b >= 1 && b <= 12) dmy++;
+    if (b > 12 && b <= 31 && a >= 1 && a <= 12) mdy++;
+  }
+  if (CONFIG.dateOrder !== "AUTO") {
+    resolvedDateOrder = CONFIG.dateOrder;
+    timestampStats.note = T("CSV date order {0} (selected).", [resolvedDateOrder]);
+  } else if (dmy && mdy) {
+    // A mixed-format export is not safe to guess for ambiguous dates.
+    resolvedDateOrder = null;
+    timestampStats.note = L("Mixed DMY/MDY evidence: ambiguous dates excluded. Set one consistent date format in the Sheet.");
+  } else {
+    resolvedDateOrder = mdy ? "MDY" : "DMY";
+    timestampStats.note = dmy || mdy
+      ? T("CSV date order {0} detected from unambiguous dates.", [resolvedDateOrder])
+      : L("CSV date order DMY assumed: no unambiguous slash dates found. Select MDY if your Sheet uses month/day/year.");
+  }
+}
+
+function strictTimestamp(y, mo, d, h = 0, mi = 0, sec = 0, millis = 0, offset = CONFIG.utcOffsetMinutes) {
+  if (![y, mo, d, h, mi, sec, millis, offset].every(Number.isFinite) ||
+      mo < 1 || mo > 12 || d < 1 || d > 31 || h < 0 || h > 23 ||
+      mi < 0 || mi > 59 || sec < 0 || sec > 59) return null;
+  const wall = new Date(Date.UTC(y, mo - 1, d, h, mi, sec, millis));
+  // Reject rollovers such as September 31 and month 13.
+  if (wall.getUTCFullYear() !== y || wall.getUTCMonth() !== mo - 1 ||
+      wall.getUTCDate() !== d) return null;
+  return new Date(wall.getTime() - offset * 60000);
+}
+
 function normalizeTimestamp(raw) {
+  if (raw instanceof Date) return Number.isFinite(raw.getTime()) ? raw : null;
   if (raw === null || raw === undefined || raw === "") return null;
-
-  if (raw instanceof Date) {
-    return Number.isNaN(raw.getTime()) ? null : raw;
-  }
-
-  if (typeof raw === "number") {
-    if (raw > 1e12) return new Date(raw);
-    if (raw > 1e9) return new Date(raw * 1000);
-  }
-
   const s = String(raw).trim();
-  if (!s) return null;
-
-  // Unix timestamp stored as a string.
-  if (/^\d{10,13}$/.test(s)) {
-    const n = Number(s);
-    return new Date(s.length === 13 ? n : n * 1000);
+  if (/^\d{10}$|^\d{13}$/.test(s)) {
+    return new Date(Number(s) * (s.length === 10 ? 1000 : 1));
   }
-
-  // ISO-ish: YYYY-MM-DD HH:mm:ss
-  let match = s.match(
-    /^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
-  );
-
-  if (match) {
-    const [, y, mo, d, h = "0", mi = "0", sec = "0"] = match;
-    const date = new Date(
-      Number(y), Number(mo) - 1, Number(d),
-      Number(h), Number(mi), Number(sec)
-    );
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  // Google Sheets locale style: DD/MM/YYYY or MM/DD/YYYY
-  match = s.match(
-    /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[ ,T]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i
-  );
-
-  if (match) {
-    let [, a, b, y, hh = "0", mm = "0", ss = "0", ampm = ""] = match;
-
-    let day, month;
-
-    if (CONFIG.dateOrder === "MDY") {
-      month = Number(a);
-      day = Number(b);
-    } else {
-      day = Number(a);
-      month = Number(b);
+  // Explicit ISO timezone takes precedence over the configured Sheet zone.
+  let m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?\s*(Z|[+-]\d{2}:?\d{2})?)?$/i);
+  if (m) {
+    const [, y, mo, d, h = "0", mi = "0", sec = "0", ms = "0", zone] = m;
+    let offset = CONFIG.utcOffsetMinutes;
+    if (zone) {
+      if (zone.toUpperCase() === "Z") offset = 0;
+      else {
+        const z = zone.match(/^([+-])(\d{2}):?(\d{2})$/);
+        if (Number(z[2]) > 23 || Number(z[3]) > 59) return null;
+        offset = (Number(z[2]) * 60 + Number(z[3])) * (z[1] === "+" ? 1 : -1);
+      }
     }
-
-    let hour = Number(hh);
-
-    if (ampm) {
-      const upper = ampm.toUpperCase();
-      if (upper === "PM" && hour < 12) hour += 12;
-      if (upper === "AM" && hour === 12) hour = 0;
-    }
-
-    const date = new Date(
-      Number(y), month - 1, day,
-      hour, Number(mm), Number(ss)
-    );
-
-    return Number.isNaN(date.getTime()) ? null : date;
+    return strictTimestamp(Number(y), Number(mo), Number(d), Number(h), Number(mi),
+      Number(sec), Number(ms.padEnd(3, "0")), offset);
   }
+  m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[ ,T]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i);
+  if (!m) return null; // Never delegate ambiguous strings to Date.parse.
+  const [, a, b, y, hh = "0", mi = "0", sec = "0", ampm] = m;
+  if (!resolvedDateOrder) { timestampStats.ambiguous++; return null; }
+  let h = Number(hh);
+  if (ampm) {
+    if (h < 1 || h > 12) return null;
+    h = h % 12 + (ampm.toUpperCase() === "PM" ? 12 : 0);
+  }
+  return strictTimestamp(Number(y), Number(resolvedDateOrder === "MDY" ? a : b),
+    Number(resolvedDateOrder === "MDY" ? b : a), h, Number(mi), Number(sec));
+}
 
-  // Final browser fallback.
-  const fallback = new Date(s);
-  return Number.isNaN(fallback.getTime()) ? null : fallback;
+function sampleTimestamp(date) {
+  return date.toLocaleString("en-GB", { timeZone: CONFIG.displayTimeZone, hour12: false });
+}
+
+function updateTimestampDiagnostics() {
+  const stats = timestampStats;
+  document.getElementById("timestampDiagnostics").textContent =
+    T("{0} Times shown in {1}. Excluded: {2} invalid, {3} future, {4} too old; {5} duplicate timestamp/medium rows merged.", [stats.note, CONFIG.displayTimeZone, stats.invalid, stats.future, stats.old, stats.duplicate]);
 }
 
 function validateValue(key, value) {
@@ -733,6 +1177,8 @@ function validateValue(key, value) {
 
 function sanitizeRows(rows) {
   invalidFieldCount = 0;
+  timestampStats = { invalid: 0, future: 0, old: 0, duplicate: 0, ambiguous: 0, note: "" };
+  resolveDateOrder(rows || []);
 
   if (!rows || !rows.length) return [];
 
@@ -758,16 +1204,26 @@ function sanitizeRows(rows) {
     };
   });
 
-  const withValidTime = parsed.filter(row => row.t !== null);
-
-  // Keep only reasonable dates, but do not reject historical data merely
-  // because it is older than the current dashboard range.
-  const minDate = new Date("2020-01-01T00:00:00").getTime();
-  const maxDate = Date.now() + 365 * 24 * 60 * 60 * 1000;
-
-  return withValidTime
-    .filter(row => row.t.getTime() >= minDate && row.t.getTime() <= maxDate)
-    .sort((a, b) => a.t - b.t);
+  const minDate = Date.UTC(2020, 0, 1);
+  const maxDate = Date.now() + CONFIG.maxFutureMs;
+  const unique = new Map();
+  for (const row of parsed) {
+    if (!row.t || !Number.isFinite(row.t.getTime())) { timestampStats.invalid++; continue; }
+    if (row.t.getTime() < minDate) { timestampStats.old++; continue; }
+    if (row.t.getTime() > maxDate) { timestampStats.future++; continue; }
+    const key = `${row.medium ?? "untagged"}:${row.t.getTime()}`;
+    if (unique.has(key)) {
+      timestampStats.duplicate++;
+      const previous = unique.get(key);
+      // Retain valid fields from earlier entries when a repeated entry lacks them.
+      METRICS.forEach(metric => {
+        if (!Number.isFinite(row[metric.key])) row[metric.key] = previous[metric.key];
+      });
+    }
+    unique.set(key, row);
+  }
+  // updateTimestampDiagnostics();
+  return Array.from(unique.values()).sort((a, b) => a.t - b.t);
 }
 
 
@@ -790,7 +1246,7 @@ function dataInSelectedRange(data) {
   if (range === "all") return data.slice();
 
   const cutoff = Date.now() - range;
-  return data.filter(row => row.t.getTime() >= cutoff);
+  return data.filter(row => row.t.getTime() >= cutoff && row.t.getTime() <= Date.now() + CONFIG.maxFutureMs);
 }
 
 function resample(data, resolutionSec) {
@@ -873,9 +1329,9 @@ function updateKPIs() {
 
     document.getElementById("latestTimestamp").innerText = "--";
     document.getElementById("sampleAge").innerText = "--";
-    document.getElementById("rowsLoaded").innerText = `0 ${sensingMode} / ${cleanData.length} valid`;
+    document.getElementById("rowsLoaded").innerText = T("0 {0} / {1} valid", [sensingMode, cleanData.length]);
     document.getElementById("kpiQuality").innerText = "--";
-    document.getElementById("kpiQualityHint").innerText = `No ${sensingMode} rows available`;
+    document.getElementById("kpiQualityHint").innerText = T("No {0} rows available", [sensingMode]);
     return;
   }
 
@@ -909,13 +1365,13 @@ function updateKPIs() {
     formatted(last.vsys, 2);
 
   document.getElementById("latestTimestamp").innerText =
-    last.t.toLocaleString();
+    sampleTimestamp(last.t);
 
   document.getElementById("sampleAge").innerText =
     humanAge(Date.now() - last.t.getTime());
 
   document.getElementById("rowsLoaded").innerText =
-    `${modeData.length} ${sensingMode} / ${cleanData.length} valid / ${rawRowCount} raw`;
+    T("{0} {1} / {2} valid / {3} raw", [modeData.length, sensingMode, cleanData.length, rawRowCount]);
 
   const metrics = activeMetrics();
   const expectedFields = modeData.length * metrics.length;
@@ -934,20 +1390,20 @@ function updateKPIs() {
     quality.toFixed(1) + "%";
 
   document.getElementById("kpiQualityHint").innerText =
-    `${metrics.length} visible metrics • ${invalidFieldCount} implausible field(s) rejected across feed`;
+    T("{0} visible metrics • {1} implausible field(s) rejected across feed", [metrics.length, invalidFieldCount]);
 }
 
 function humanAge(ms) {
   if (!Number.isFinite(ms)) return "--";
-  if (ms < 0) return "future timestamp";
+  if (ms < 0) return L("future timestamp");
 
   const seconds = Math.floor(ms / 1000);
 
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+  if (seconds < 60) return T("{0}s", [seconds]);
+  if (seconds < 3600) return T("{0}m", [Math.floor(seconds / 60)]);
+  if (seconds < 86400) return T("{0}h {1}m", [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60)]);
 
-  return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
+  return T("{0}d {1}h", [Math.floor(seconds / 86400), Math.floor((seconds % 86400) / 3600)]);
 }
 
 
@@ -1051,7 +1507,7 @@ function renderCharts() {
         suggestedMax: 100,
         ticks: { color: "#38bdf8" },
         grid: { display: false },
-        title: { display: true, text: "Moisture (%)", color: "#94a3b8" }
+        title: { display: true, text: L("Moisture (%)"), color: "#94a3b8" }
       };
     }
 
@@ -1073,7 +1529,7 @@ function renderCharts() {
               borderWidth: 2
             },
             ...(sensingMode === "soil" ? [{
-              label: "Moisture (%)",
+              label: L("Moisture (%)"),
               data: xy(data, "moist"),
               parsing: false,
               borderColor: "#38bdf8",
@@ -1117,7 +1573,7 @@ function renderCharts() {
         data: {
           datasets: [
             {
-              label: "Temperature (°C)",
+              label: L("Temperature (°C)"),
               data: xy(data, "temp"),
               parsing: false,
               borderColor: "#22d3ee",
@@ -1161,7 +1617,7 @@ function renderCharts() {
         data: {
           datasets: [
             {
-              label: "Nitrogen (N)",
+              label: L("Nitrogen (N)"),
               data: xy(data, "nitrogen"),
               parsing: false,
               borderColor: "#a3e635",
@@ -1170,7 +1626,7 @@ function renderCharts() {
               borderWidth: 2
             },
             {
-              label: "Phosphorus (P)",
+              label: L("Phosphorus (P)"),
               data: xy(data, "phosphorus"),
               parsing: false,
               borderColor: "#fbbf24",
@@ -1179,7 +1635,7 @@ function renderCharts() {
               borderWidth: 2
             },
             {
-              label: "Potassium (K)",
+              label: L("Potassium (K)"),
               data: xy(data, "potassium"),
               parsing: false,
               borderColor: "#fb923c",
@@ -1202,7 +1658,7 @@ function renderCharts() {
       beginAtZero: true,
       ticks: { color: "#2dd4bf" },
       grid: { color: "#334155" },
-      title: { display: true, text: "Salinity", color: "#94a3b8" }
+      title: { display: true, text: L("Salinity"), color: "#94a3b8" }
     };
 
     charts.salinity = new Chart(
@@ -1212,7 +1668,7 @@ function renderCharts() {
         data: {
           datasets: [
             {
-              label: "Salinity",
+              label: L("Salinity"),
               data: xy(data, "salinity"),
               parsing: false,
               borderColor: "#2dd4bf",
@@ -1337,8 +1793,8 @@ function runAnalytics() {
   tbody.innerHTML = "";
 
   if (!data.length) {
-    anomaliesEl.innerText = `No ${sensingMode} data in the selected time range.`;
-    notesEl.innerText = "Choose a wider time range or check the optional medium column in the Google Sheet.";
+    anomaliesEl.innerText = T("No {0} data in the selected time range.", [sensingMode]);
+    notesEl.innerText = L("Choose a wider time range or check the optional medium column in the Google Sheet.");
     return;
   }
 
@@ -1390,7 +1846,7 @@ function runAnalytics() {
 
   anomaliesEl.innerHTML = anomalyBlocks.length
     ? anomalyBlocks.join("")
-    : "No ≥3σ statistical outliers detected in the selected window.";
+    : L("No ≥3σ statistical outliers detected in the selected window.");
 
   const missingFields = data.reduce((count, row) => {
     return count + activeMetrics().reduce(
@@ -1399,14 +1855,175 @@ function runAnalytics() {
     );
   }, 0);
 
-  notesEl.innerHTML = `
-    <div>${data.length} plotted/resampled point(s) in the selected window.</div>
-    <div class="mt-1">${missingFields} missing/invalid metric value(s) in this rendered dataset.</div>
-    <div class="mt-1 text-slate-400">
-      Statistical outliers indicate unusual readings, not necessarily ${sensingMode === "water" ? "water-quality problems" : "agronomic faults"}.
-    </div>
-  `;
+  notesEl.innerHTML = T("\n    <div>{0} plotted/resampled point(s) in the selected window.</div>\n    <div class=\"mt-1\">{1} missing/invalid metric value(s) in this rendered dataset.</div>\n    <div class=\"mt-1 text-slate-400\">\n      Statistical outliers indicate unusual readings, not necessarily {2}.\n    </div>\n  ", [data.length, missingFields,
+    sensingMode === "water" ? L("water-quality problems") : L("agronomic faults")]);
+
 }
+
+/* Plain-language guidance. These compare readings; they are not crop
+   suitability thresholds, laboratory nutrient tests, or fish health scores. */
+const SIMPLE_PARAMETERS = {
+  ph: { title: L("pH — soil acidity"), unit: '', meaning: L("This shows whether the soil is acidic, neutral, or alkaline. It affects how easily roots can take up plant food."),
+    action: L("Compare this with the pH needed by your crop. Confirm with a soil test before adding lime or products that change pH.") },
+  moist: { title: L("Moisture — water in the soil"), unit: '%', meaning: L("This is the probe's estimate of water around it. The same percentage can mean different things in sandy and clay soils."),
+    action: L("Feel or inspect the soil near the roots, and check other spots before changing watering.") },
+  temp: { title: L("Temperature — warmth around the roots"), unit: '°C', meaning: L("This shows how warm or cool the soil is where the probe sits. Roots and seeds respond differently depending on the crop."),
+    action: L("Compare with your crop's growing needs. Check the probe depth and compare morning and afternoon readings.") },
+  ec: { title: L("EC — dissolved salts and minerals"), unit: 'µS/cm', meaning: L("EC measures how easily electricity passes through the soil. Water and dissolved salts, including fertiliser salts, affect it. It does not tell which nutrient is present."),
+    action: L("Check recent watering and fertiliser use. Use a suitable salt test if you suspect salt build-up; do not add fertiliser just because EC is low.") },
+  salinity: { title: L("Salinity — the probe's salt reading"), unit: L("probe units"), meaning: L("This is another reported salt-related reading. Too much salt can make it harder for roots to take up water. Its units must be checked in the probe manual."),
+    action: L("Watch changes at the same spot. Confirm the salt reading and check irrigation water before deciding how to manage salts.") },
+  nitrogen: { title: L("Nitrogen (N) — leaf and stem growth"), unit: 'mg/kg', meaning: L("Plants use nitrogen to grow leaves and stems. This is the probe's reported estimate; the number alone cannot tell you whether the crop needs more."),
+    action: L("Check plant growth and your fertiliser records. Get a crop-specific soil or plant test before choosing a nitrogen dose.") },
+  phosphorus: { title: L("Phosphorus (P) — roots and plant energy"), unit: 'mg/kg', meaning: L("Plants use phosphorus for energy and growth, including roots. A probe estimate does not establish a shortage."),
+    action: L("Use a soil test for your crop before buying phosphorus fertiliser. Recheck an unexpected probe change.") },
+  potassium: { title: L("Potassium (K) — water use and plant strength"), unit: 'mg/kg', meaning: L("Plants use potassium to regulate water and support growth. This probe reading does not establish how much fertiliser is needed."),
+    action: L("Check crop condition and confirm with a soil test before changing potassium fertiliser.") },
+  vsys: { title: L("Power supply — energy for the device"), unit: 'V', meaning: L("This shows the voltage reaching the electronics. It describes the device, rather than soil fertility or water quality."),
+    action: L("Compare with your device's normal supply voltage. If it is falling, check the power source, cable and connections.") }
+};
+
+const WATER_PARAMETERS = {
+  ph: { title: L("pH — water acidity"), meaning: L("This shows whether the water is acidic, neutral, or alkaline. The suitable level depends on the fish you keep."), action: L("Compare with the needs of your fish and confirm with a water pH test. Avoid changing pH based on one reading.") },
+  temp: { title: L("Temperature — warmth of the water"), meaning: L("This is the reported water temperature. Different fish need different temperatures."), action: L("Compare with the needs of your fish and an aquarium thermometer. Check the heater and position of the probe.") },
+  ec: { title: L("EC — dissolved salts and minerals"), meaning: L("This indicates dissolved salts and minerals in the water. It cannot tell you how much ammonia or nitrite is present."), action: L("Compare with your usual tank water and source water. Use separate aquarium tests for ammonia and nitrite.") },
+  salinity: { title: L("Salinity — reported salt reading"), meaning: L("This is the probe's salt-related reading. Do not treat unknown probe units as aquarium salt concentration."), action: L("Verify the units and water calibration. Use an appropriate aquarium salt test before adding salt or changing water chemistry.") }
+};
+
+// Minimum changes used for simple wording, not crop/fish safety limits.
+function changeSensitivity(key, baseline) {
+  const minimum = { ph: .2, moist: 3, temp: 1, ec: 25, salinity: 1,
+    nitrogen: 5, phosphorus: 5, potassium: 5, vsys: .15 };
+  const fraction = ['ec', 'salinity'].includes(key) ? .1
+    : ['nitrogen', 'phosphorus', 'potassium'].includes(key) ? .2 : 0;
+  return Math.max(minimum[key], Math.abs(baseline) * fraction);
+}
+
+function simpleParameterState(row, history, key) {
+  const value = row[key];
+  if (!Number.isFinite(value)) return { key, value, direction: 0, badge: L("Reading missing"), missing: true,
+    message: L("The latest sample has no usable value for this parameter. An earlier value is not being shown as current.") };
+  const past = history.slice(0, -1).filter(r => Number.isFinite(r[key])).slice(-5);
+  if (past.length < 5) return { key, value, direction: 0, badge: L("First readings"),
+    message: L("The latest reading is shown. Five earlier readings are needed to describe a recent change.") };
+  const spacing = history.slice(-12).map((r, i, a) => i ? r.t.getTime() - a[i - 1].t.getTime() : NaN).filter(x => x > 0);
+  const medianGap = quantile(spacing, .5);
+  const gap = row.t.getTime() - past[past.length - 1].t.getTime();
+  if (gap > Math.max(5 * 60000, (Number.isFinite(medianGap) ? medianGap : 0) * 3)) {
+    return { key, value, direction: 0, badge: L("After a data gap"),
+      message: L("Earlier readings are separated by a long pause. Collect more recent readings before comparing changes.") };
+  }
+  const baseline = quantile(past.map(r => r[key]), .5);
+  const delta = value - baseline;
+  const direction = Math.abs(delta) >= changeSensitivity(key, baseline) ? Math.sign(delta) : 0;
+  const metric = METRICS.find(m => m.key === key);
+  const span = humanAge(row.t.getTime() - past[0].t.getTime());
+  let message;
+  if (!direction) message = T("About the same as the previous five readings, taken over approximately {0}.", [span]);
+  else {
+    const amount = formatted(Math.abs(delta), metric.decimals);
+    const unit = key === 'moist' ? L("percentage points") : SIMPLE_PARAMETERS[key].unit;
+    message = T("{0} by about {1}{2} compared with the middle value of the previous five readings (approximately {3}).", [direction > 0 ? L("Up") : L("Down"), amount, unit ? ' ' + unit : '', span]);
+  }
+  return { key, value, direction, delta, baseline,
+    badge: direction > 0 ? L("Higher than recently") : direction < 0 ? L("Lower than recently") : L("Little recent change"), message };
+}
+
+function parameterExplanation(state, water) {
+  const base = SIMPLE_PARAMETERS[state.key];
+  const info = { ...base, ...(water ? WATER_PARAMETERS[state.key] : {}) };
+  if (state.missing) return { ...info, interpretation: '', action: L("Check the next update and the probe connection. If this value stays missing, check the probe and its readings.") };
+  let interpretation = '';
+  if (state.key === 'ph') interpretation = state.value < 7 ? L("The reported reading is on the acidic side of the pH scale.")
+    : state.value > 7 ? L("The reported reading is on the alkaline side of the pH scale.") : L("The reported pH is neutral.");
+  if (state.direction) {
+    const up = state.direction > 0;
+    if (state.key === 'moist') {
+      interpretation = up ? L("The probe is reporting more water around it than recently.") : L("The probe is reporting less water around it than recently.");
+      info.action = up ? L("Check whether it has rained or you watered. Look for standing water and check drainage before adding more water.")
+        : L("Check the soil near the roots and the watering system. Water only if those checks show the crop needs it.");
+    } else if (state.key === 'temp') {
+      interpretation = water ? T("The water reading is {0} than recently.", [up ? L("warmer") : L("cooler")]) : T("The soil reading is {0} than recently.", [up ? L("warmer") : L("cooler")]);
+    } else if (['ec', 'salinity'].includes(state.key)) {
+      interpretation = L("A change can follow watering, evaporation, fertiliser use or a change in probe contact. The reading alone does not identify the cause.");
+    } else if (['nitrogen', 'phosphorus', 'potassium'].includes(state.key)) {
+      interpretation = L("This change is a reason to recheck the reading. It does not prove that the crop has used up, or gained, that amount of plant food.");
+    } else if (state.key === 'vsys') interpretation = up ? L("The device is receiving a higher voltage than recently.") : L("The device is receiving a lower voltage than recently.");
+  }
+  return { ...info, interpretation };
+}
+
+function textElement(tag, text, css = '') {
+  const element = document.createElement(tag);
+  element.textContent = text;
+  if (css) element.className = css;
+  return element;
+}
+
+function renderFarmerGuide() {
+  const water = sensingMode === 'water';
+  document.getElementById('farmerHeading').textContent = water ? L("Your aquarium readings, explained simply") : L("Your soil, explained simply");
+  const container = document.getElementById('farmerCards');
+  container.replaceChildren();
+  document.getElementById('farmerModeNote').textContent = water
+    ? L("Soil moisture measures water around soil particles; N, P and K are soil nutrient estimates. These soil readings are left out of the aquarium guide. They do not test aquarium ammonia, nitrite, nitrate or oxygen. Verify that this probe is suitable and calibrated for water.")
+    : L("N, P and K stand for nitrogen, phosphorus and potassium: three nutrients plants use. The unit mg/kg means milligrams per kilogram of soil. Track the probe readings and use crop-specific test results to choose fertiliser amounts.");
+  const history = dataInSelectedRange(dataForMode()).slice(-24); // actual samples; no averaging of latest value
+  if (!history.length) {
+    document.getElementById('farmerSummary').textContent = T("No {0} readings in this time range. Choose a wider range or check the data feed.", [sensingMode]);
+    document.getElementById('farmerFreshness').textContent = L("There is no current reading to interpret.");
+    activeMetrics().forEach(metric => {
+      const info = { ...SIMPLE_PARAMETERS[metric.key], ...(water ? WATER_PARAMETERS[metric.key] : {}) };
+      const card = textElement('article', '', 'farmer-card');
+      card.appendChild(textElement('h3', info.title));
+      card.appendChild(textElement('p', info.meaning));
+      card.appendChild(textElement('p', L("Waiting for a reading.")));
+      container.appendChild(card);
+    });
+    return;
+  }
+  const latest = history[history.length - 1];
+  const ageMs = Date.now() - latest.t.getTime();
+  const stale = ageMs > 5 * 60000;
+  const future = ageMs < 0;
+  const states = activeMetrics().map(metric => simpleParameterState(latest, history, metric.key));
+  for (const state of states) {
+    const info = parameterExplanation(state, water);
+    const metric = METRICS.find(m => m.key === state.key);
+    const card = textElement('article', '', 'farmer-card');
+    card.appendChild(textElement('h3', info.title));
+    card.appendChild(textElement('p', info.meaning));
+    card.appendChild(textElement('div', state.missing ? L("No current reading") : `${formatted(state.value, metric.decimals)}${info.unit ? ' ' + info.unit : ''}`, 'farmer-value'));
+    const badge = stale ? L("Older reading") : future ? L("Check device clock") : state.badge;
+    card.appendChild(textElement('span', badge, 'farmer-badge' + (stale || future || state.direction || state.missing ? ' check' : '')));
+    card.appendChild(textElement('p', (info.interpretation ? info.interpretation + ' ' : '') + state.message));
+    card.appendChild(textElement('p', T("What to do: {0}", [info.action]), 'farmer-action'));
+    container.appendChild(card);
+  }
+  const completeness = states.filter(s => !s.missing).length;
+  const quality = textElement('article', '', 'farmer-card');
+  quality.appendChild(textElement('h3', L("Reading completeness — is anything missing?")));
+  quality.appendChild(textElement('p', T("{0} of {1} visible parameters have a usable value in the latest sample. A complete sample does not guarantee an accurate probe.", [completeness, states.length])));
+  quality.appendChild(textElement('p', completeness === states.length ? L("What to do: keep the probe clean and repeat unusual readings at nearby spots or with a checked meter.") : L("What to do: check the probe cable, power source and next update for the missing values."), 'farmer-action'));
+  container.appendChild(quality);
+  const changes = states.filter(s => s.direction && !s.missing);
+  const missing = states.filter(s => s.missing);
+  const important = ['moist', 'temp', 'ph', 'vsys', 'ec', 'salinity', 'nitrogen', 'phosphorus', 'potassium'];
+  changes.sort((a, b) => important.indexOf(a.key) - important.indexOf(b.key));
+  let summary;
+  if (stale) summary = L("These readings are older than five minutes. Restore fresh updates before deciding what to change. The cards below explain the last available readings.");
+  else if (future) summary = L("The latest reading is slightly ahead of the dashboard clock. Check the device and dashboard clocks before relying on timing or forecasts.");
+  else if (missing.length) summary = T("Some latest readings are missing: {0}. Check the probe connection and next update first.", [missing.map(s => SIMPLE_PARAMETERS[s.key].title.split(' — ')[0]).join(', ')]);
+  else if (changes.length) summary = changes.slice(0, 3).map(state => {
+    const info = parameterExplanation(state, water);
+    return T("{0} is {1} than recently. {2}", [info.title.split(' — ')[0], state.direction > 0 ? L("higher") : L("lower"), info.action]);
+  }).join(' ') + (changes.length > 3 ? L(" More changes are explained in the cards below.") : '');
+  else summary = history.length < 6 ? L("The latest readings are available. More readings are needed to describe recent changes; you can already use the cards to understand each number.")
+    : L("No large recent changes were found where comparison was possible. Check the cards below and compare with the needs of your crop or fish; steady readings can still be unsuitable.");
+  document.getElementById('farmerSummary').textContent = summary;
+  document.getElementById('farmerFreshness').textContent = T("Last actual reading: {0} ({1}) • {2}. Changes compare the latest sample with five earlier readings; the chart resolution does not change this comparison.", [sampleTimestamp(latest.t), CONFIG.displayTimeZone, future ? L("ahead of dashboard clock") : humanAge(ageMs) + L(" ago")]);
+}
+
 
 /* ==========================================================================
    TENSORFLOW.JS: LEARNED ANOMALIES + ONE-STEP FORECASTS
@@ -1438,12 +2055,18 @@ function setAiStatus(message, css = "text-slate-400") {
 }
 
 function resetAiPanel(reason) {
-  document.getElementById("aiPattern").textContent = "--";
-  document.getElementById("aiPatternDetail").textContent = reason;
-  document.getElementById("aiForecast").textContent = reason;
-  document.getElementById("aiCorrelation").textContent = "Not enough valid paired readings.";
-  document.getElementById("aiInsight").textContent = reason;
+  document.getElementById("aiTechnical").textContent = reason;
+  const waiting = /No .*readings|No readings/i.test(reason);
+  const failed = /fail|error|did not load/i.test(reason);
+  document.getElementById("aiPattern").textContent = failed ? L("AI check unavailable") : waiting ? L("Waiting for readings") : L("Checking your readings");
+  document.getElementById("aiPatternDetail").textContent = failed
+    ? L("The AI could not finish. The simple parameter guide above still explains available readings.")
+    : L("The AI needs earlier readings to compare. Your simple parameter guide does not need to wait.");
+  document.getElementById("aiForecast").textContent = L("A prediction will appear when enough suitable earlier readings are available.");
+  document.getElementById("aiCorrelation").textContent = L("Waiting to compare changes in the readings.");
+  document.getElementById("aiInsight").textContent = L("Start with the parameter cards above: each explains its reading, recent change, and a practical next check.");
 }
+
 
 function scheduleAiAnalytics(force = false) {
   const data = preparedData().slice(-AI.maxRows);
@@ -1466,18 +2089,18 @@ async function processAiQueue() {
       if (!data.length) {
         if (generation === aiGeneration) {
           resetAiPanel(`No ${sensingMode} readings in the selected time range.`);
-          setAiStatus("Waiting for samples", "text-amber-300");
+          setAiStatus(L("Waiting for samples"), "text-amber-300");
         }
         continue;
       }
       if (typeof tf === "undefined") {
         if (generation === aiGeneration) {
           resetAiPanel("TensorFlow.js did not load. Check access to cdn.jsdelivr.net and refresh.");
-          setAiStatus("Model unavailable", "text-rose-300");
+          setAiStatus(L("Model unavailable"), "text-rose-300");
         }
         continue;
       }
-      setAiStatus("Training locally…", "text-sky-300");
+      setAiStatus(L("Learning from earlier readings…"), "text-sky-300");
       try {
         await tf.ready();
         const anomaly = await detectLearnedAnomaly(data);
@@ -1486,13 +2109,13 @@ async function processAiQueue() {
           ? await forecastNextSample(data) : null;
         if (generation === aiGeneration) {
           showAiResults(data, anomaly, forecast, strongestCorrelation(data));
-          setAiStatus("Analyzed locally • " + data.length + " points", "text-emerald-300");
+          setAiStatus(L("Checked ") + data.length + L(" readings"), "text-emerald-300");
         }
       } catch (error) {
-        console.error("[GermiSeed] TensorFlow.js analytics error:", error);
+        console.error("[Germiseed] TensorFlow.js analytics error:", error);
         if (generation === aiGeneration) {
           resetAiPanel("Model calculation failed: " + (error.message || error));
-          setAiStatus("Model error", "text-rose-300");
+          setAiStatus(L("Model error"), "text-rose-300");
         }
       }
     }
@@ -1587,7 +2210,8 @@ async function forecastNextSample(data) {
     samples.push({ past: window.slice(0, 5), next: window[5] });
   }
   if (samples.length < 48 || samples[samples.length - 1]?.next !== complete[complete.length - 1]) {
-    return { note: "Need 48 consecutive, regularly spaced training windows ending at the latest sample." };
+    const latestValid = samples[samples.length - 1]?.next === complete[complete.length - 1];
+    return { note: `Timing check: ${samples.length}/48 usable six-reading windows; median gap ${(gap / 1000).toFixed(1)}s; latest window ${latestValid ? "valid" : "irregular"}. Duplicate timestamps and gaps outside ${(gap / 2000).toFixed(1)}–${(gap * 2 / 1000).toFixed(1)}s are excluded.` };
   }
   const split = Math.floor(samples.length * .8);
   const baseline = samples.slice(0, split).flatMap(sample => sample.past);
@@ -1666,51 +2290,102 @@ function strongestCorrelation(data) {
   return strongest;
 }
 
+
+function localizeModelNote(note) {
+  if (uiLanguage !== 'ms') return note;
+  const exact = {"Need at least three varying, mostly complete sensors.": "Sekurang-kurangnya tiga parameter yang berubah dan hampir lengkap diperlukan.", "Latest sample has missing sensor values; cannot score its pattern.": "Sampel terkini mempunyai nilai sensor yang tiada; coraknya tidak dapat dinilai.", "Historical sensor values are too constant to learn a baseline.": "Nilai sensor sebelumnya terlalu tetap untuk mempelajari corak asas.", "Latest sample has missing forecast sensor values.": "Sampel terkini mempunyai nilai yang tiada bagi sensor ramalan.", "Need regular timestamps for a next-sample forecast.": "Masa bacaan yang teratur diperlukan untuk ramalan sampel seterusnya.", "Forecast sensors have insufficient variation for model training.": "Perubahan sensor ramalan tidak mencukupi untuk latihan model.", "Latest samples are not regularly spaced.": "Sampel terkini tidak mempunyai selang masa yang teratur.", "Model did not beat a recent-value baseline on held-out data; forecast withheld.": "Ramalan model tidak lebih baik daripada bacaan terkini pada data semakan; ramalan tidak dipaparkan."};
+  if (exact[note]) return exact[note];
+  let match = note.match(/^Need (\d+) complete readings \((\d+) available\)\.$/);
+  if (match) return `Perlu ${match[1]} bacaan lengkap (${match[2]} tersedia).`;
+  match = note.match(/^Need 60 complete (.+) readings \((\d+) available\)\. Widen the time range if needed\.$/);
+  if (match) return `Perlu 60 bacaan lengkap untuk ${match[1].split(', ').map(plainMetricName).join(', ')} (${match[2]} tersedia). Luaskan tempoh jika perlu.`;
+  match = note.match(/^Timing check: (\d+)\/48 usable six-reading windows; median gap ([\d.]+)s; latest window (valid|irregular)\. Duplicate timestamps and gaps outside ([\d.]+)–([\d.]+)s are excluded\.$/);
+  if (match) return `Semakan masa: ${match[1]}/48 urutan enam bacaan boleh digunakan; selang median ${match[2]} saat; urutan terkini ${match[3] === 'valid' ? 'sah' : 'tidak teratur'}. Masa pendua dan selang di luar ${match[4]}–${match[5]} saat dikecualikan.`;
+  return note;
+}
+
+function plainMetricName(key) {
+  return { ph: L("pH (acidity)"), moist: L("soil moisture"), temp: sensingMode === 'water' ? L("water temperature") : L("soil temperature"),
+    ec: L("dissolved salts and minerals (EC)"), salinity: L("salt reading"), nitrogen: L("nitrogen"), phosphorus: L("phosphorus"),
+    potassium: L("potassium"), vsys: L("device power voltage") }[key] || key;
+}
+
 function showAiResults(data, anomaly, forecast, correlation) {
-  const pattern = document.getElementById("aiPattern");
-  const detail = document.getElementById("aiPatternDetail");
-  const forecastEl = document.getElementById("aiForecast");
-  const insights = [];
-  if (anomaly.note) {
-    pattern.textContent = "Insufficient data";
-    pattern.className = "text-xl font-semibold mt-2 text-amber-300";
-    detail.textContent = anomaly.note;
-    insights.push(anomaly.note);
+  lastAiResults = {data, anomaly, forecast, correlation};
+  lastAiResultFingerprint = aiLastFingerprint;
+  const pattern = document.getElementById('aiPattern');
+  const detail = document.getElementById('aiPatternDetail');
+  const forecastEl = document.getElementById('aiForecast');
+  const actualLatest = dataForMode().at(-1);
+  const ageMs = actualLatest ? Date.now() - actualLatest.t.getTime() : Infinity;
+  const stale = ageMs > 5 * 60 * 1000;
+  const future = ageMs < 0;
+  const technical = [];
+  let insight;
+  if (stale || future) {
+    pattern.textContent = L("Check the update time");
+    pattern.className = 'text-xl font-semibold mt-2 text-amber-300';
+    detail.textContent = stale ? L("Fresh data has stopped arriving. These comparisons describe older readings.") : L("The latest reading is ahead of the dashboard clock.");
+    insight = L("Get fresh, correctly timed readings before making a decision. The guide above explains the last available measurements.");
+  } else if (anomaly.note) {
+    pattern.textContent = L("Still learning your readings");
+    pattern.className = 'text-xl font-semibold mt-2 text-amber-300';
+    detail.textContent = L("The AI needs enough complete readings that vary over time. You can already use the simple parameter guide above.");
+    insight = L("The AI is not ready to compare the combined readings yet. Each card above explains its parameter and any recent change without needing the AI to finish learning.");
+    technical.push(L("Anomaly model: ") + localizeModelNote(anomaly.note));
   } else {
     const unusual = anomaly.latest > anomaly.threshold;
-    pattern.textContent = unusual ? "Unusual pattern" : "Within learned pattern";
-    pattern.className = "text-xl font-semibold mt-2 " + (unusual ? "text-rose-300" : "text-emerald-300");
-    detail.textContent = `Error ${anomaly.latest.toFixed(3)} / threshold ${anomaly.threshold.toFixed(3)} • ${anomaly.keys.length} sensors • ${anomaly.rows} complete rows`;
-    insights.push(unusual
-      ? `Latest combined sensor pattern exceeds the learned baseline; ${anomaly.recentAnomalies.length} later sample(s) exceeded it. Check the raw readings and probe.`
-      : `Latest combined sensor pattern remains within the learned baseline (${anomaly.recentAnomalies.length} later exceedance(s)).`);
+    pattern.textContent = unusual ? L("Something has changed") : L("Readings look familiar");
+    pattern.className = 'text-xl font-semibold mt-2 ' + (unusual ? 'text-amber-300' : 'text-sky-300');
+    detail.textContent = unusual
+      ? L("The combination of readings differs from what this probe usually reported. This does not identify the cause.")
+      : L("The latest combination is similar to earlier readings. It does not prove the soil or water meets the needs of your plants or fish.");
+    const count = anomaly.recentAnomalies.length;
+    insight = unusual
+      ? L("Start with the changed or missing readings in the guide above. Check whether the probe moved, watering changed or fertiliser was applied, then repeat the measurement before changing treatment.")
+      : L("The AI has not found an unusual combination in the latest reading. Use the parameter cards above to check acidity, water, warmth and plant food against your crop needs.");
+    if (sensingMode === 'water' && !unusual) insight = L("The latest combination looks similar to earlier tank readings. Check the cards above against your fish needs, and use separate water tests for ammonia and nitrite.");
+    if (count) insight += T(" {0} later reading{1} differed from the usual combination; check the chart for when the change happened.", [count, count === 1 ? '' : 's']);
+    technical.push(T("Anomaly error {0}; threshold {1}; {2} inputs; {3} complete rows. Later exceedances: {4}.", [anomaly.latest.toFixed(3), anomaly.threshold.toFixed(3), anomaly.keys.length, anomaly.rows, count]));
   }
-  const stale = Date.now() - data[data.length - 1].t.getTime() > 5 * 60 * 1000;
-  if (stale) {
-    forecastEl.textContent = "Latest reading is over 5 minutes old; live forecast withheld.";
-  } else if (!forecast?.results?.length) {
-    forecastEl.textContent = forecast?.note || "Forecast unavailable.";
+  if (stale || future) forecastEl.textContent = L("Prediction paused until fresh, correctly timed readings arrive.");
+  else if (!forecast?.results?.length) {
+    const note = forecast?.note || '';
+    forecastEl.textContent = /Timing check|regular|timestamp|consecutive/i.test(note)
+      ? L("Not ready to predict: readings need to arrive at steadier intervals. The current-reading guide still works.")
+      : /baseline/i.test(note)
+        ? L("No useful prediction yet: on earlier data, the AI was no better than assuming the next reading stays the same.")
+        : /constant|variation/i.test(note)
+          ? L("These readings changed too little for the AI to learn a useful prediction. Keep watching the actual measurements.")
+          : L("More complete readings are needed before predicting ahead. The guide above already explains the latest measurements.");
+    technical.push(L("Forecast: ") + localizeModelNote(note || L("Unavailable.")));
   } else {
     forecastEl.replaceChildren();
-    const heading = document.createElement("p");
-    heading.className = "text-xs text-slate-400 mb-2";
-    heading.textContent = `Approximately ${humanAge(forecast.gap)} after last sample • ${forecast.evaluated} held-out windows`;
-    forecastEl.appendChild(heading);
+    forecastEl.appendChild(textElement('p', T("At the next update, about {0} after the last reading:", [humanAge(forecast.gap)]), 'text-sm text-slate-300'));
     forecast.results.forEach(item => {
       const metric = METRICS.find(m => m.key === item.key);
-      const row = document.createElement("p");
-      row.className = "mt-1";
-      row.textContent = `${metric.label}: ${formatted(item.value, metric.decimals)} (held-out MAE ${formatted(item.mae, metric.decimals)})`;
-      forecastEl.appendChild(row);
+      const unit = SIMPLE_PARAMETERS[item.key].unit;
+      const latest = actualLatest?.[item.key];
+      const delta = item.value - latest;
+      const trend = !Number.isFinite(delta) || Math.abs(delta) < changeSensitivity(item.key, latest)
+        ? L("may stay about the same") : delta > 0 ? L("may rise") : L("may fall");
+      forecastEl.appendChild(textElement('p', T("{0} {1}: estimated {2}{3}.", [plainMetricName(item.key), trend, formatted(item.value, metric.decimals), unit ? ' ' + unit : '']), 'mt-2 text-sm'));
+      forecastEl.appendChild(textElement('p', T("When checked against earlier readings, the average prediction miss was {0}{1}.", [formatted(item.mae, metric.decimals), unit ? ' ' + unit : '']), 'text-xs text-slate-400'));
     });
-    const strongest = forecast.results.reduce((best, item) =>
-      !best || item.mae < best.mae ? item : best, null);
-    insights.push(`Next ${humanAge(forecast.gap)} ${METRICS.find(m => m.key === strongest.key).label} estimate: ${formatted(strongest.value, METRICS.find(m => m.key === strongest.key).decimals)} (held-out MAE ${formatted(strongest.mae, METRICS.find(m => m.key === strongest.key).decimals)}).`);
+    technical.push(T("Forecast checked on {0} later windows; horizon {1} seconds.", [forecast.evaluated, (forecast.gap / 1000).toFixed(1)]));
   }
-  document.getElementById("aiCorrelation").textContent = correlation
-    ? `${correlation.a.label} and ${correlation.b.label}: r = ${correlation.r.toFixed(2)} (${correlation.n} paired points). ${Math.abs(correlation.r) >= .65 ? "Strong observed association." : "No strong pair found."}`
-    : "Need at least 20 varying, paired readings.";
-  document.getElementById("aiInsight").textContent = insights.join(" ");
+  const relationship = document.getElementById('aiCorrelation');
+  if (!correlation) relationship.textContent = L("More changing readings are needed to see which parameters move together.");
+  else {
+    const strong = Math.abs(correlation.r) >= .65;
+    relationship.textContent = strong
+      ? T("{0} and {1} tended to {2} in this history. This does not prove one caused the other.", [plainMetricName(correlation.a.key), plainMetricName(correlation.b.key), correlation.r >= 0 ? L("rise and fall together") : L("move in opposite directions")])
+      : L("No pair of readings moved closely together in this history. Check each parameter on its own.");
+    if (Math.abs(correlation.r) >= .995) relationship.textContent += L(" Their changes are almost identical. Check the probe manual and raw readings before treating them as separate evidence.");
+    technical.push(T("Correlation: {0} / {1}, r={2}, {3} paired points.", [correlation.a.key, correlation.b.key, correlation.r.toFixed(4), correlation.n]));
+  }
+  document.getElementById('aiInsight').textContent = insight;
+  document.getElementById('aiTechnical').textContent = technical.join(' ');
 }
 
 
@@ -1720,13 +2395,14 @@ function showAiResults(data, anomaly, forecast, correlation) {
 
 function renderAll() {
   updateKPIs();
+  renderFarmerGuide();
 
   try {
     renderCharts();
   } catch (error) {
-    console.error("[GermiSeed] chart render error:", error);
+    console.error("[Germiseed] chart render error:", error);
     document.getElementById("dataNotes").innerText =
-      "Chart render error: " + (error.message || error);
+      L("Chart render error: ") + (error.message || error);
   }
 
   runAnalytics();
@@ -1750,14 +2426,14 @@ async function loadData() {
     !CONFIG.csvUrl ||
     CONFIG.csvUrl.includes("PASTE_YOUR_PUBLISHED_GOOGLE_SHEET_CSV_URL_HERE")
   ) {
-    setStatus("Configure Google Sheet CSV URL", false, false);
+    setStatus(L("Configure Google Sheet CSV URL"), false, false);
     document.getElementById("dataNotes").innerHTML =
-      `Edit <code class="text-emerald-300">CONFIG.csvUrl</code> in this HTML file and paste the published Google Sheet CSV URL.`;
+      T("Edit <code class=\"text-emerald-300\">CONFIG.csvUrl</code> in this HTML file and paste the published Google Sheet CSV URL.", []);
     return;
   }
 
   setControlsDisabled(true);
-  setStatus("Loading Google Sheet...", true, true);
+  setStatus(L("Loading Google Sheet..."), true, true);
 
   try {
     const rows = await fetchCsv(CONFIG.csvUrl);
@@ -1773,11 +2449,13 @@ async function loadData() {
       );
     }
 
+    cachedCsvRows = rows;
     cleanData = sanitizeRows(rows);
 
     if (!cleanData.length) {
+      renderAll();
       throw new Error(
-        "CSV loaded, but no rows had a valid timestamp. " +
+        "CSV loaded, but no rows have usable timestamps (invalid, future or too old). " +
         "Check CONFIG.dateOrder and the timestamp column."
       );
     }
@@ -1786,7 +2464,7 @@ async function loadData() {
     renderAll();
 
     console.info(
-      "[GermiSeed] rendered",
+      "[Germiseed] rendered",
       cleanData.length,
       "clean rows; chart window:",
       preparedData().length,
@@ -1801,7 +2479,7 @@ async function loadData() {
 
   } catch (error) {
     console.error(error);
-    setStatus("Data error: " + (error.message || error), false, false);
+    setStatus(L("Data error: ") + (error.message || error), false, false);
     document.getElementById("dataNotes").innerText =
       error.message || String(error);
 
@@ -1828,13 +2506,28 @@ function resetTimer() {
   );
 }
 
+const EN_METRIC_LABELS = METRICS.map(metric => metric.label);
+const EN_SOIL_PARAMETERS = JSON.parse(JSON.stringify(SIMPLE_PARAMETERS));
+const EN_WATER_PARAMETERS = JSON.parse(JSON.stringify(WATER_PARAMETERS));
+document.getElementById('languageSelect').addEventListener('change', event => setLanguage(event.target.value));
+
 window.addEventListener("load", () => {
+  captureStaticLanguageText();
+  let savedLanguage = 'en';
+  try { savedLanguage = localStorage.getItem('germiseed-language') || 'en'; } catch (_) {}
+  setLanguage(savedLanguage, false);
   let savedMode = "soil";
   try { savedMode = localStorage.getItem("germiseed-sensing-mode") || "soil"; } catch (_) { /* storage may be blocked */ }
+  try {
+    const savedOrder = localStorage.getItem("germiseed-date-order");
+    if (["AUTO", "DMY", "MDY"].includes(savedOrder)) CONFIG.dateOrder = savedOrder;
+  } catch (_) {}
+  document.getElementById("dateOrderSelect").value = CONFIG.dateOrder;
   setSensingMode(savedMode, false);
   loadData();
   resetTimer();
 });
+
 </script>
 </body>
 </html>
